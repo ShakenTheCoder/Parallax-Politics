@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: parallax-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-parallax}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-parallax}
+      POSTGRES_DB: ${POSTGRES_DB:-parallax}
+    ports:
+      - "5433:5432"
+    volumes:
+      - parallax-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-parallax}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: parallax-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - parallax-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  parallax-pg:
+  parallax-redis:
