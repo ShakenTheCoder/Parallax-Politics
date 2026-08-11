@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -17,13 +16,19 @@ from app.schemas.agents import AgentResult
 class CompetitorItem(BaseModel):
     name: str = Field(description="Name of the competitor")
     party: str | None = Field(None, description="Political party of the competitor, if any")
-    match_score: float = Field(description="Multiple factor analysis score 0.0 to 1.0 indicating threat level")
+    match_score: float = Field(
+        description="Multiple factor analysis score 0.0 to 1.0 indicating threat level"
+    )
     reasoning: str = Field(description="Rationale for why they are a competitor")
-    overlap_areas: list[str] = Field(default_factory=list, description="Policy or demographic overlap areas")
+    overlap_areas: list[str] = Field(
+        default_factory=list, description="Policy or demographic overlap areas"
+    )
 
 
 class CompetitorAnalysisResult(BaseModel):
-    competitors: list[CompetitorItem] = Field(default_factory=list, description="List of identified competitors")
+    competitors: list[CompetitorItem] = Field(
+        default_factory=list, description="List of identified competitors"
+    )
 
 
 class CompetitorAnalysisAgent(BaseAgent):
@@ -33,7 +38,7 @@ class CompetitorAnalysisAgent(BaseAgent):
 
     async def _run(self, ctx: AgentContext) -> AgentResult:
         llm = get_llm_client()
-        
+
         system_prompt = (
             "You are a political intelligence analyst. Perform a multiple-factor analysis "
             "to identify the top political competitors to the given principal candidate.\n"
@@ -61,16 +66,9 @@ class CompetitorAnalysisAgent(BaseAgent):
             temperature=0.4,
         )
 
-        payload = resp.json_payload or {}
-        
-        try:
-            parsed = CompetitorAnalysisResult.model_validate(payload)
-        except Exception:
-            parsed = CompetitorAnalysisResult(competitors=[])
-            if isinstance(payload.get("competitors"), list):
-                for c in payload["competitors"]:
-                    with contextlib.suppress(Exception):
-                        parsed.competitors.append(CompetitorItem.model_validate(c))
+        if resp.json_payload is None:
+            raise ValueError("LLM returned no valid competitor analysis JSON")
+        parsed = CompetitorAnalysisResult.model_validate(resp.json_payload)
 
         # Persist to database if we have a profile_id
         profile_id_raw = ctx.extra.get("profile_id")
@@ -94,12 +92,15 @@ class CompetitorAnalysisAgent(BaseAgent):
             confidence=0.8,
         )
 
-    async def _persist_competitors(self, profile_id: UUID, competitors: list[CompetitorItem]) -> None:
+    async def _persist_competitors(
+        self, profile_id: UUID, competitors: list[CompetitorItem]
+    ) -> None:
         async with session_scope() as db:
             from sqlalchemy import delete
+
             # Delete old competitors if re-running
             await db.execute(delete(Competitor).where(Competitor.profile_id == profile_id))
-            
+
             for c in competitors:
                 comp_db = Competitor(
                     profile_id=profile_id,

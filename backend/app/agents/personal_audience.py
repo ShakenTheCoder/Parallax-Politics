@@ -1,4 +1,5 @@
 """PersonalAudienceAgent — translates principal profile into data scraping instructions."""
+
 from __future__ import annotations
 
 from app.agents._helpers import identity_brief
@@ -46,7 +47,9 @@ class PersonalAudienceAgent(BaseAgent):
             domains_to_monitor=list(payload.get("domains_to_monitor") or []),
             priority_topics=list(payload.get("priority_topics") or []),
             extraction_fields=list(payload.get("extraction_fields") or []),
-            instructions_summary=str(payload.get("instructions_summary") or "Extract personal brand information."),
+            instructions_summary=str(
+                payload.get("instructions_summary") or "Extract personal brand information."
+            ),
         )
 
         return AgentResult(

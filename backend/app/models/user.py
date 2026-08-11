@@ -27,4 +27,6 @@ class User(Base, UUIDPK, Timestamps):
         index=True,
     )
 
-    user_profile: Mapped["UserProfile"] = relationship("UserProfile", back_populates="user", uselist=False)
+    user_profile: Mapped["UserProfile"] = relationship(
+        "UserProfile", back_populates="user", uselist=False
+    )

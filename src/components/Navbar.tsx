@@ -15,7 +15,8 @@ export default function Navbar() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const task = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(task);
   }, []);
 
   const navItems = user

@@ -8,6 +8,7 @@ Delegates to the ContextPack registry so every agent gets:
 Pass pack_id to select a non-default pack (future packs: us_politics,
 football_manager, musician, etc.).
 """
+
 from app.contexts import default_pack_id, get_pack
 
 

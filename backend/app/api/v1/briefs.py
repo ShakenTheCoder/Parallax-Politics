@@ -1,4 +1,5 @@
 """Brief endpoints — on-demand strategic briefs for the current user's principal."""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -74,6 +75,7 @@ async def _resolve_principal(db, user) -> Profile:
 
 # --- Generate ---------------------------------------------------------------
 
+
 @router.post("", response_model=BriefGenerateOut, status_code=status.HTTP_202_ACCEPTED)
 async def generate_brief(
     db: DbSession,
@@ -92,7 +94,7 @@ async def generate_brief(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Principal identity not ready (status: {pi.status if pi else 'missing'}). "
-                   "Wait for the PIDAA build to complete before generating a brief.",
+            "Wait for the PIDAA build to complete before generating a brief.",
         )
 
     run = Run(
@@ -115,6 +117,7 @@ async def generate_brief(
 
 
 # --- Read -------------------------------------------------------------------
+
 
 @router.get("", response_model=list[BriefSummary])
 async def list_my_briefs(db: DbSession, user: CurrentUser) -> list[BriefSummary]:
@@ -173,7 +176,9 @@ async def get_my_identity(db: DbSession, user: CurrentUser) -> dict:
             "network": (pi.network if pi else {}) or {},
             "source_index": (pi.source_index if pi else {}) or {},
             "coverage_gaps": list((pi.coverage_gaps if pi else []) or []),
-        } if pi else None,
+        }
+        if pi
+        else None,
     }
 
 

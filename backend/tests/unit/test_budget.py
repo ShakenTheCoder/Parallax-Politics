@@ -1,4 +1,5 @@
 """TokenBudgetManager — hard caps + reconciliation."""
+
 import pytest
 
 from app.config import get_settings
@@ -8,7 +9,7 @@ from app.redis import get_redis
 
 @pytest.fixture
 async def fresh_budget():
-    """Wipe today's budget keys before each test so caps are deterministic.
+    """Wipe today's budget keys before each test so caps are isolated.
 
     Also resets the process-wide Redis singleton so each test gets a client
     bound to the current event loop (pytest-asyncio creates a new loop per test).
@@ -46,7 +47,9 @@ async def test_opus_subcap_enforced(fresh_budget):
 async def test_per_run_cap_enforced(fresh_budget):
     b, s = fresh_budget
     rid = "test-run-aaa"
-    await b.check_and_reserve(cost_estimate=s.per_run_budget_usd - 0.001, family="sonnet", run_id=rid)
+    await b.check_and_reserve(
+        cost_estimate=s.per_run_budget_usd - 0.001, family="sonnet", run_id=rid
+    )
     with pytest.raises(BudgetExhaustedError) as exc:
         await b.check_and_reserve(cost_estimate=0.10, family="sonnet", run_id=rid)
     assert exc.value.scope == "per_run"

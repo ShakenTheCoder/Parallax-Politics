@@ -9,9 +9,11 @@ Pipeline:
 
 Cost cap: ~$0.02 per call.
 """
+
 from __future__ import annotations
 
 import asyncio
+
 from app.schemas.superadmin import IdentityCandidate
 from app.search.exa import get_exa_client
 from app.utils.portraits import resolve_wikipedia_identity
@@ -34,15 +36,28 @@ async def run_disambiguation(
 
     sources = []
     if identity:
-        sources.append({"url": identity.page_url, "title": identity.title, "domain": "en.wikipedia.org"})
-    sources.extend({"url": item.url, "title": item.title or "", "domain": item.domain} for item in results[:2])
-    aliases = [identity.title] if identity and identity.title.casefold() != name_query.casefold() else []
+        sources.append(
+            {"url": identity.page_url, "title": identity.title, "domain": "en.wikipedia.org"}
+        )
+    sources.extend(
+        {"url": item.url, "title": item.title or "", "domain": item.domain} for item in results[:2]
+    )
+    aliases = (
+        [identity.title] if identity and identity.title.casefold() != name_query.casefold() else []
+    )
     return IdentityCandidate(
-        full_name=name_query.strip(), aliases=aliases,
+        full_name=name_query.strip(),
+        aliases=aliases,
         current_role=identity.description if identity else None,
-        party=None, region=None, born=None, birthplace=None,
+        party=None,
+        region=None,
+        born=None,
+        birthplace=None,
         photo_url=identity.portrait_url if identity else None,
         one_line_bio=identity.extract if identity else None,
-        top_sources=sources[:3], confidence=0.95 if identity else (0.35 if results else 0.0),
-        ambiguity_notes="Exact first-name identity match; confirm before creating the dossier." if identity else "No exact Wikipedia identity match; review corroborating sources before confirmation.",
+        top_sources=sources[:3],
+        confidence=0.95 if identity else (0.35 if results else 0.0),
+        ambiguity_notes="Exact first-name identity match; confirm before creating the dossier."
+        if identity
+        else "No exact Wikipedia identity match; review corroborating sources before confirmation.",
     )

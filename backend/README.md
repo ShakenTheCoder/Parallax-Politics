@@ -8,7 +8,7 @@ Political-intelligence control plane for **Parallax Politics** — FastAPI, asyn
 - **DB**: PostgreSQL 16 via SQLAlchemy 2.0 async + Alembic
 - **Cache / event bus / budget counters**: Redis 7
 - **Background jobs**: arq
-- **LLM**: OpenRouter (Google Gemma 4 31B) with free tier
+- **LLM**: NVIDIA NIM (`meta/llama-3.3-70b-instruct`)
 - **Search**: EXA
 - **Tooling**: `uv` for envs + deps, `ruff` + `mypy` + `pytest`
 
@@ -17,7 +17,7 @@ Political-intelligence control plane for **Parallax Politics** — FastAPI, asyn
 ```bash
 # 1. Copy env
 cp .env.example .env
-# edit OPENROUTER_API_KEY and EXA_API_KEY
+# edit NVIDIA_API_KEY and EXA_API_KEY
 
 # 2. Start infra
 docker compose up -d
@@ -59,8 +59,8 @@ Hard limits enforced via Redis atomic counters:
 - **$25/day** global LLM spend (for budget tracking)
 - **$0.50/run** orchestrator budget
 - **$5/day** escalation sub-cap (for budget tracking)
-- **$0.00** actual cost with Google Gemma free tier
-- `LLM_DISABLED=true` short-circuits all LLM calls to deterministic mocks
+- NVIDIA NIM usage is charged or rate-limited according to the configured NVIDIA account; provider responses are required for analytical runs.
+- LLM and EXA credentials are required; provider failures are surfaced to the run and are never replaced with synthetic output.
 
 See `app/llm/budget.py`.
 
@@ -74,7 +74,7 @@ app/
   redis.py           client + pub/sub helpers
   api/v1/            REST + SSE endpoints
   agents/            DCAA, DEMCAA, SGA, PPA, Strategist, Commander
-  llm/               OpenRouter client, router, budget, prompts/
+  llm/               NVIDIA NIM client, router, budget, prompts/
   search/            EXA wrapper
   models/            SQLAlchemy models
   schemas/           Pydantic DTOs

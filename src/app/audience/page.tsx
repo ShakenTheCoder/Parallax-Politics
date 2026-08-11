@@ -37,8 +37,9 @@ export default function AudienceCenterPage() {
       router.replace("/admin");
       return;
     }
-    fetchInstructions();
+    const task = window.setTimeout(() => void fetchInstructions(), 0);
     return () => {
+      window.clearTimeout(task);
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [fetchInstructions, router, sessionLoading, user?.role]);
@@ -66,7 +67,7 @@ export default function AudienceCenterPage() {
             setGenerating(false);
             if (pollRef.current) clearInterval(pollRef.current);
           }
-        } catch (e) {
+        } catch {
           // Ignore polling errors
         }
         

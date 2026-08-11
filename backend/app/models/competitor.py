@@ -13,7 +13,10 @@ class Competitor(Base, UUIDPK, Timestamps):
     __tablename__ = "competitors"
 
     profile_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        PgUUID(as_uuid=True),
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     party: Mapped[str | None] = mapped_column(String(120), nullable=True)

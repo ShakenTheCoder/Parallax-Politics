@@ -1,10 +1,12 @@
 """Source-backed portrait resolution for confirmed public identities."""
+
 from __future__ import annotations
 
-import httpx
 import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
+
+import httpx
 
 _WIKIMEDIA_HOST = "upload.wikimedia.org"
 _NAME_TOKEN = re.compile(r"[a-z]+")
@@ -23,7 +25,9 @@ def _name_tokens(value: str) -> set[str]:
     return set(_NAME_TOKEN.findall(value.casefold()))
 
 
-def _select_matching_page(full_name: str, ordered_titles: list[str], pages: dict[str, dict]) -> dict | None:
+def _select_matching_page(
+    full_name: str, ordered_titles: list[str], pages: dict[str, dict]
+) -> dict | None:
     """Select only a page whose title contains the identity's first name.
 
     Surname-only matching is unsafe for political families (e.g. Sara, Paolo,
@@ -70,20 +74,41 @@ async def resolve_wikipedia_identity(full_name: str) -> WikipediaIdentity | None
                 "Accept": "application/json",
             },
         ) as client:
-            search = await client.get(search_url, params={
-                "action": "query", "list": "search", "srsearch": f"{full_name} Philippines politician",
-                "srlimit": 3, "format": "json", "utf8": 1,
-            })
+            search = await client.get(
+                search_url,
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": f"{full_name} Philippines politician",
+                    "srlimit": 3,
+                    "format": "json",
+                    "utf8": 1,
+                },
+            )
             search.raise_for_status()
-            titles = [item.get("title") for item in search.json().get("query", {}).get("search", []) if item.get("title")]
+            titles = [
+                item.get("title")
+                for item in search.json().get("query", {}).get("search", [])
+                if item.get("title")
+            ]
             if not titles:
                 return None
-            pages = await client.get(search_url, params={
-                "action": "query", "prop": "pageimages|extracts|description", "piprop": "thumbnail",
-                "pithumbsize": 1200, "titles": "|".join(titles), "redirects": 1,
-                "exintro": 1, "explaintext": 1, "exsentences": 2,
-                "format": "json", "utf8": 1,
-            })
+            pages = await client.get(
+                search_url,
+                params={
+                    "action": "query",
+                    "prop": "pageimages|extracts|description",
+                    "piprop": "thumbnail",
+                    "pithumbsize": 1200,
+                    "titles": "|".join(titles),
+                    "redirects": 1,
+                    "exintro": 1,
+                    "explaintext": 1,
+                    "exsentences": 2,
+                    "format": "json",
+                    "utf8": 1,
+                },
+            )
             pages.raise_for_status()
     except (httpx.HTTPError, ValueError):
         return None

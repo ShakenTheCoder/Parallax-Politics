@@ -1,4 +1,5 @@
 """Durable scheduled acquisition jobs for the intelligence control plane."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

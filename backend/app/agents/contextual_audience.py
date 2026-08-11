@@ -1,7 +1,9 @@
 """ContextualAudienceAgent — creates macro-demographic/regional extraction instructions."""
+
 from __future__ import annotations
 
 import json
+
 from app.agents._helpers import identity_brief
 from app.agents.base import AgentContext, BaseAgent
 from app.llm.client import get_llm_client
@@ -50,7 +52,10 @@ class ContextualAudienceAgent(BaseAgent):
             demographic_segments=list(payload.get("demographic_segments") or []),
             salient_issues=list(payload.get("salient_issues") or []),
             channel_mix=list(payload.get("channel_mix") or []),
-            instructions_summary=str(payload.get("instructions_summary") or "Extract contextual regional and demographic insights."),
+            instructions_summary=str(
+                payload.get("instructions_summary")
+                or "Extract contextual regional and demographic insights."
+            ),
         )
 
         return AgentResult(

@@ -1,4 +1,5 @@
 """Identity module — data requirements and gap taxonomy for principal identities."""
+
 from app.identity.gap_taxonomy import (
     DATA_REQUIREMENTS,
     GAP_TAXONOMY,

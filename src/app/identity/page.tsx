@@ -51,22 +51,25 @@ function IdentityRecord() {
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) { router.replace("/login"); return; }
-    if (!profileId) { setError("No identity record was selected."); return; }
     let active = true;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    const selectedProfileId = profileId;
     const load = async () => {
+      if (!selectedProfileId) return;
       try {
-        const record = await api.getPrincipalDetail(profileId);
+        const record = await api.getPrincipalDetail(selectedProfileId);
         if (!active) return;
         setDetail(record);
         setError("");
         if (record.pidaa_status === "ready" && timer) clearInterval(timer);
       } catch { if (active) setError("The requested identity record is unavailable."); }
     };
-    void load();
-    timer = setInterval(load, 5000);
-    return () => { active = false; if (timer) clearInterval(timer); };
+    const timer = window.setInterval(load, 5000);
+    const task = window.setTimeout(() => {
+      if (!getToken()) { router.replace("/login"); return; }
+      if (!profileId) { setError("No identity record was selected."); return; }
+      void load();
+    }, 0);
+    return () => { active = false; window.clearTimeout(task); window.clearInterval(timer); };
   }, [profileId, router]);
 
   const sections = useMemo(() => {

@@ -2,18 +2,19 @@
 
 Admin console endpoints. All protected routes require an authenticated admin JWT.
 """
+
 from __future__ import annotations
 
+import re
 import secrets
 import string
 import uuid
-from datetime import UTC
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import AdminToken, DbSession
 from app.agents.disambiguation import run_disambiguation
+from app.api.deps import AdminToken, DbSession
 from app.contexts import default_pack_id
 from app.models.principal_identity import PrincipalIdentity
 from app.models.profile import Profile
@@ -31,8 +32,6 @@ from app.schemas.superadmin import (
 )
 from app.security import hash_password
 from app.services.orchestrator import execute_run
-
-import re
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -52,15 +51,13 @@ def _generate_password(length: int = 16) -> str:
 
 def _make_username(full_name: str) -> str:
     parts = full_name.lower().split()
-    if len(parts) >= 2:
-        base = f"{parts[0][0]}{parts[-1]}"
-    else:
-        base = parts[0] if parts else "user"
+    base = f"{parts[0][0]}{parts[-1]}" if len(parts) >= 2 else parts[0] if parts else "user"
     base = _SLUG_STRIP.sub("", base)
     return f"{base}{secrets.token_hex(3)}"
 
 
 # --- Disambiguation ----------------------------------------------------------
+
 
 @router.post("/disambiguate", response_model=IdentityCandidate)
 async def disambiguate(
@@ -72,6 +69,7 @@ async def disambiguate(
 
 
 # --- Principal creation ------------------------------------------------------
+
 
 @router.post("/principals", response_model=CreatePrincipalOut, status_code=status.HTTP_201_CREATED)
 async def create_principal(
@@ -183,11 +181,10 @@ async def create_principal(
 
 # --- Principal management ----------------------------------------------------
 
+
 @router.get("/principals", response_model=list[PrincipalSummary])
 async def list_principals(db: DbSession, _sa: AdminToken) -> list[PrincipalSummary]:
-    profiles_res = await db.execute(
-        select(Profile).order_by(Profile.created_at.desc())
-    )
+    profiles_res = await db.execute(select(Profile).order_by(Profile.created_at.desc()))
     profiles = profiles_res.scalars().all()
 
     result: list[PrincipalSummary] = []
@@ -200,19 +197,25 @@ async def list_principals(db: DbSession, _sa: AdminToken) -> list[PrincipalSumma
         user_res = await db.execute(select(User).where(User.principal_id == p.id))
         u = user_res.scalar_one_or_none()
 
-        result.append(PrincipalSummary(
-            profile_id=p.id,
-            identity_id=pi.id if pi else uuid.UUID(int=0),
-            full_name=p.full_name,
-            role_title=p.role_title,
-            party=p.party,
-            pack_id=p.pack_id,
-            pidaa_status=pi.status if pi else "no_identity",
-            built_at=pi.built_at.isoformat() if (pi and pi.built_at) else None,
-            username=u.username if u else "—",
-            profile_image_url=pi.profile_image_url if pi else None,
-            overview=(pi.basics.get("summary") or pi.basics.get("bio") or pi.basics.get("description")) if pi else None,
-        ))
+        result.append(
+            PrincipalSummary(
+                profile_id=p.id,
+                identity_id=pi.id if pi else uuid.UUID(int=0),
+                full_name=p.full_name,
+                role_title=p.role_title,
+                party=p.party,
+                pack_id=p.pack_id,
+                pidaa_status=pi.status if pi else "no_identity",
+                built_at=pi.built_at.isoformat() if (pi and pi.built_at) else None,
+                username=u.username if u else "—",
+                profile_image_url=pi.profile_image_url if pi else None,
+                overview=(
+                    pi.basics.get("summary") or pi.basics.get("bio") or pi.basics.get("description")
+                )
+                if pi
+                else None,
+            )
+        )
     return result
 
 
@@ -263,7 +266,9 @@ async def get_principal(
         pidaa_status=pi.status if pi else "no_identity",
         built_at=pi.built_at.isoformat() if (pi and pi.built_at) else None,
         profile_image_url=pi.profile_image_url if pi else None,
-        overview=(pi.basics.get("summary") or pi.basics.get("bio") or pi.basics.get("description")) if pi else None,
+        overview=(pi.basics.get("summary") or pi.basics.get("bio") or pi.basics.get("description"))
+        if pi
+        else None,
         identity=identity,
     )
 
@@ -302,7 +307,11 @@ async def rerun_pidaa(
             "pack_id": p.pack_id,
             "profile_id": str(profile_id),
             "identity_id": str(pi.id) if pi else None,
-            "confirmed_candidate": {"full_name": p.full_name, "current_role": p.role_title, "party": p.party},
+            "confirmed_candidate": {
+                "full_name": p.full_name,
+                "current_role": p.role_title,
+                "party": p.party,
+            },
         },
     )
     db.add(run)
@@ -329,9 +338,8 @@ async def archive_principal(
     if u:
         # Delete UserProfile first so the ORM doesn't try to NULL the FK before the User delete
         from app.models.user_profile import UserProfile
-        up_res = await db.execute(
-            select(UserProfile).where(UserProfile.user_id == str(u.id))
-        )
+
+        up_res = await db.execute(select(UserProfile).where(UserProfile.user_id == str(u.id)))
         up = up_res.scalar_one_or_none()
         if up:
             await db.delete(up)

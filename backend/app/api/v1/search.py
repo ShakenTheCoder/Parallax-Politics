@@ -1,4 +1,5 @@
 """Debug endpoint for SGA / EXA."""
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import AdminUser
@@ -17,9 +18,7 @@ async def search(
     try:
         results = await exa.search(q, num_results=n)
     except ExaQuotaExceeded as exc:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return {
         "query": q,
         "count": len(results),

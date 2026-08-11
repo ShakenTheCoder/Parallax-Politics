@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import contextlib
+import asyncio
 import json
-import urllib.parse
-from uuid import UUID
+from pathlib import Path
 
 import httpx
 
@@ -19,50 +18,39 @@ settings = get_settings()
 
 class FacebookAnalysisAgent(BaseAgent):
     name = "FacebookAnalysis"
-    default_tier = ModelTier.advanced  # Using advanced for synthesis
+    default_tier = ModelTier.default
     max_cost_usd = 0.50
 
     async def _run(self, ctx: AgentContext) -> AgentResult:
         llm = get_llm_client()
-        
+
         # 1. Gather inputs
         p_inst = ctx.upstream.get("PersonalAudience")
         comp_inst = ctx.upstream.get("CompetitorsAudience")
         ctx_inst = ctx.upstream.get("ContextualAudience")
         competitors_res = ctx.upstream.get("CompetitorAnalysis")
 
-        personal_data = {}
-        competitor_data = {}
-        contextual_data = {}
+        if not settings.meta_access_token:
+            raise RuntimeError("META_ACCESS_TOKEN is required for Facebook analysis")
 
-        if settings.meta_access_token:
-            # If we have a token, do real scraping (simplified for safety)
-            # In a real production system, this would be highly robust with rate limit handling
-            try:
-                personal_data = await self._scrape_personal(p_inst)
-                competitor_data = await self._scrape_competitors(comp_inst, competitors_res)
-                contextual_data = await self._scrape_contextual(ctx_inst)
-            except Exception as e:
-                self.log.error("facebook_analysis.scrape_failed", error=str(e))
-                # Fallback to empty dicts so LLM can still generate a structure
-        else:
-            # Fallback mock data if token is not provided
-            self.log.info("facebook_analysis.no_token", msg="Using mock data for Facebook Graph API")
-            personal_data = self._mock_personal_data()
-            competitor_data = self._mock_competitor_data()
-            contextual_data = self._mock_contextual_data()
+        personal_data = await self._scrape_personal(p_inst)
+        competitor_data = await self._scrape_competitors(comp_inst, competitors_res)
+        contextual_data = await self._scrape_contextual(ctx_inst)
 
         # Combine raw data
         raw_graph_data = {
             "Personal": personal_data,
             "Competitors": competitor_data,
-            "Contextual": contextual_data
+            "Contextual": contextual_data,
         }
 
-        with open("app/contexts/philippines_politics/agents/facebook_analysis.md", "r") as f:
-            prompt_content = f.read()
-            
-        system_prompt = prompt_content.split("---")[-1].strip() if "---" in prompt_content else prompt_content
+        prompt_content = await asyncio.to_thread(
+            Path("app/contexts/philippines_politics/agents/facebook_analysis.md").read_text
+        )
+
+        system_prompt = (
+            prompt_content.split("---")[-1].strip() if "---" in prompt_content else prompt_content
+        )
 
         user_content = (
             "Please analyze the following raw Facebook Graph API data and output the result according to the JSON schema.\n\n"
@@ -80,18 +68,9 @@ class FacebookAnalysisAgent(BaseAgent):
             temperature=0.3,
         )
 
-        payload = resp.json_payload or {}
-        
-        try:
-            parsed = FacebookAnalysisResult.model_validate(payload)
-        except Exception as e:
-            self.log.error("facebook_analysis.parse_error", error=str(e))
-            # Fallback
-            parsed = FacebookAnalysisResult(
-                categories=[],
-                overall_landscape_summary="Failed to parse analysis results.",
-                actionable_recommendations=[]
-            )
+        if resp.json_payload is None:
+            raise ValueError("LLM returned no valid Facebook analysis JSON")
+        parsed = FacebookAnalysisResult.model_validate(resp.json_payload)
 
         return AgentResult(
             agent=self.name,
@@ -116,65 +95,53 @@ class FacebookAnalysisAgent(BaseAgent):
             return resp.json()
 
     async def _scrape_personal(self, inst: AgentResult | None) -> dict:
-        """Fetch posts from principal's page."""
-        # For a real implementation, we would first search for the page ID using `pages/search`
-        # Then we'd fetch `/{page_id}/posts`
-        # Since we don't have real page IDs without complex searching, we'll return mock data anyway if token isn't fully robust
-        # This is a placeholder showing the structure of the request
-        return self._mock_personal_data()
+        """Fetch posts from the principal page identified by the upstream artifact."""
+        page_id = self._page_id(inst, "principal_page_id")
+        return await self._fetch_graph_api(
+            f"{page_id}/posts",
+            {
+                "fields": "message,created_time,shares,comments.summary(true),reactions.summary(true)"
+            },
+        )
 
-    async def _scrape_competitors(self, inst: AgentResult | None, comp_res: AgentResult | None) -> dict:
-        return self._mock_competitor_data()
+    async def _scrape_competitors(
+        self, inst: AgentResult | None, comp_res: AgentResult | None
+    ) -> dict:
+        page_ids = self._page_ids(comp_res, "competitor_page_ids")
+        return {
+            page_id: await self._fetch_graph_api(
+                f"{page_id}/posts",
+                {
+                    "fields": "message,created_time,shares,comments.summary(true),reactions.summary(true)"
+                },
+            )
+            for page_id in page_ids
+        }
 
     async def _scrape_contextual(self, inst: AgentResult | None) -> dict:
-        return self._mock_contextual_data()
-
-    def _mock_personal_data(self) -> dict:
+        page_ids = self._page_ids(inst, "contextual_page_ids")
         return {
-            "posts": [
-                {
-                    "id": "12345_67890",
-                    "message": "We must stand together for progress in our agricultural sector!",
-                    "created_time": "2023-10-01T10:00:00+0000",
-                    "likes": {"summary": {"total_count": 1500}},
-                    "shares": {"count": 300},
-                    "comments": {
-                        "data": [
-                            {"message": "Yes! Finally someone is listening to the farmers."},
-                            {"message": "We need action, not just words."}
-                        ],
-                        "summary": {"total_count": 120}
-                    }
-                }
-            ]
+            page_id: await self._fetch_graph_api(
+                f"{page_id}/feed",
+                {"fields": "message,created_time,comments.summary(true),reactions.summary(true)"},
+            )
+            for page_id in page_ids
         }
 
-    def _mock_competitor_data(self) -> dict:
-        return {
-            "competitor_1": {
-                "posts": [
-                    {
-                        "message": "My opponent doesn't understand the economy. I will lower taxes.",
-                        "likes": {"summary": {"total_count": 2200}},
-                        "shares": {"count": 450},
-                        "comments": {
-                            "data": [
-                                {"message": "You have my vote!"},
-                                {"message": "Taxes aren't the only issue."}
-                            ]
-                        }
-                    }
-                ]
-            }
-        }
+    @staticmethod
+    def _page_id(result: AgentResult | None, key: str) -> str:
+        page_ids = FacebookAnalysisAgent._page_ids(result, key)
+        if len(page_ids) != 1:
+            raise ValueError(f"Exactly one {key} is required for Facebook analysis")
+        return page_ids[0]
 
-    def _mock_contextual_data(self) -> dict:
-        return {
-            "public_groups_sentiment": {
-                "top_keywords": ["inflation", "rice prices", "jobs", "traffic"],
-                "sample_discussions": [
-                    "Does anyone know when the new bridge will be finished? Traffic is terrible.",
-                    "Rice prices are too high right now."
-                ]
-            }
-        }
+    @staticmethod
+    def _page_ids(result: AgentResult | None, key: str) -> list[str]:
+        if result is None:
+            raise ValueError(f"Upstream artifact is required to resolve {key}")
+        values = result.payload.get(key)
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) and value for value in values
+        ):
+            raise ValueError(f"Upstream artifact must provide a non-empty {key} list")
+        return values

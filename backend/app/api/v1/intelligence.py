@@ -1,4 +1,5 @@
 """Authenticated political-intelligence control-plane endpoints."""
+
 from uuid import UUID
 
 from fastapi import APIRouter, status

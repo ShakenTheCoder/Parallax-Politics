@@ -3,6 +3,7 @@
 The fetch boundary intentionally does not expose stealth, CAPTCHA, proxy
 rotation, authentication, or anti-bot bypass features.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,18 +61,26 @@ class SafePublicWebCollector:
 
         content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
         if content_type not in {"text/html", "application/xhtml+xml"}:
-            raise CollectionPolicyError("registered public-web connector only accepts HTML documents")
+            raise CollectionPolicyError(
+                "registered public-web connector only accepts HTML documents"
+            )
         body = response.content
         if not body or len(body) > _MAX_BODY_BYTES:
             raise CollectionPolicyError("source response is empty or exceeds the collection limit")
 
-        page = Selector(body, url=str(response.url), huge_tree=False, keep_comments=False, adaptive=False)
+        page = Selector(
+            body, url=str(response.url), huge_tree=False, keep_comments=False, adaptive=False
+        )
         title_raw = page.css("title::text").get()
         title = self._clean_text(str(title_raw))[:500] if title_raw else None
         if css_selector:
-            fragments = page.css(css_selector).xpath(
-                ".//text()[not(ancestor::script) and not(ancestor::style) and not(ancestor::noscript)]"
-            ).getall()
+            fragments = (
+                page.css(css_selector)
+                .xpath(
+                    ".//text()[not(ancestor::script) and not(ancestor::style) and not(ancestor::noscript)]"
+                )
+                .getall()
+            )
         else:
             fragments = page.xpath(
                 "//body//text()[not(ancestor::script) and not(ancestor::style) and not(ancestor::noscript)]"

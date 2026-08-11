@@ -1,4 +1,5 @@
 """Strict public contracts for intelligence collection and review."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,7 +26,9 @@ class CollectionSourceCreate(StrictModel):
     name: str = Field(min_length=2, max_length=160)
     base_url: AnyHttpUrl
     authority: SourceAuthority
-    connector_kind: str = Field(default="scrapling", pattern=r"^(scrapling|official_api|licensed_feed)$")
+    connector_kind: str = Field(
+        default="scrapling", pattern=r"^(scrapling|official_api|licensed_feed)$"
+    )
     schedule_minutes: int = Field(default=15, ge=15, le=1440)
     robots_observed: bool = True
     allowed_paths: list[str] = Field(default_factory=list, max_length=30)

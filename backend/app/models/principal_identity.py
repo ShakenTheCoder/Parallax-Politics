@@ -1,15 +1,15 @@
 """PrincipalIdentity — PIDAA knowledge base for a confirmed Philippine principal."""
+
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import Text
 
 from app.db import Base
 from app.models._mixins import UUIDPK, Timestamps
@@ -46,7 +46,9 @@ class PrincipalIdentity(Base, UUIDPK, Timestamps):
     coverage_gaps: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
 
     # SCDRA (Specific Candidate Data Retrieval Agent) tracking
-    coverage_gaps_structured: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    coverage_gaps_structured: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
     scdra_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     scdra_last_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     data_completeness_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

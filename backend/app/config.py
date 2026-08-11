@@ -1,4 +1,5 @@
 """Application settings loaded from env (12-factor)."""
+
 from functools import lru_cache
 from typing import Literal
 
@@ -20,9 +21,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database
-    database_url: str = (
-        "postgresql+asyncpg://parallax:parallax@localhost:5432/parallax"
-    )
+    database_url: str = "postgresql+asyncpg://parallax:parallax@localhost:5432/parallax"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -46,7 +45,6 @@ class Settings(BaseSettings):
     # LLM / budget
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    llm_disabled: bool = False
     daily_budget_usd: float = 25.0
     per_run_budget_usd: float = 1.20
     daily_opus_budget_usd: float = 8.0
@@ -70,7 +68,12 @@ class Settings(BaseSettings):
         origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
         # In development, ensure common localhost origins are included
         if self.app_env == "development":
-            dev_origins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"]
+            dev_origins = [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+            ]
             origins.extend([o for o in dev_origins if o not in origins])
         return list(dict.fromkeys(origins))  # dedupe while preserving order
 
@@ -88,7 +91,9 @@ class Settings(BaseSettings):
     def validate_production_security(self) -> "Settings":
         placeholder = self.jwt_secret.lower().startswith(("change-me", "replace-"))
         if self.app_env == "production" and (placeholder or len(self.jwt_secret) < 32):
-            raise ValueError("production JWT_SECRET must be a unique value of at least 32 characters")
+            raise ValueError(
+                "production JWT_SECRET must be a unique value of at least 32 characters"
+            )
         return self
 
 

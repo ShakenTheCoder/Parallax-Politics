@@ -9,6 +9,7 @@ Each call goes through `reserve()` *before* the API call, then `commit(actual)`
 once the response is in. `reserve` uses an optimistic INCRBYFLOAT and rolls
 back if any cap is exceeded — this keeps the operation atomic without locks.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -18,8 +19,8 @@ from redis.asyncio import Redis
 
 from app.config import get_settings
 
-_DAY_TTL: Final[int] = 60 * 60 * 36   # 36h, plenty of overlap for tz boundaries
-_RUN_TTL: Final[int] = 60 * 60 * 6    # 6h per-run window
+_DAY_TTL: Final[int] = 60 * 60 * 36  # 36h, plenty of overlap for tz boundaries
+_RUN_TTL: Final[int] = 60 * 60 * 6  # 6h per-run window
 
 
 class BudgetExhaustedError(Exception):
@@ -97,7 +98,9 @@ class TokenBudgetManager:
         await self.redis.expire(day_key, _DAY_TTL)
         if new_daily > self.daily_cap:
             await self.redis.incrbyfloat(day_key, -cost_estimate)
-            raise BudgetExhaustedError("daily", float(new_daily) - cost_estimate, self.daily_cap, cost_estimate)
+            raise BudgetExhaustedError(
+                "daily", float(new_daily) - cost_estimate, self.daily_cap, cost_estimate
+            )
 
         # Opus sub-cap
         if family == "opus":
@@ -107,7 +110,10 @@ class TokenBudgetManager:
                 await self.redis.incrbyfloat(opus_key, -cost_estimate)
                 await self.redis.incrbyfloat(day_key, -cost_estimate)
                 raise BudgetExhaustedError(
-                    "daily_opus", float(new_opus) - cost_estimate, self.daily_opus_cap, cost_estimate
+                    "daily_opus",
+                    float(new_opus) - cost_estimate,
+                    self.daily_opus_cap,
+                    cost_estimate,
                 )
 
         # Per-run cap

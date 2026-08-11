@@ -1,7 +1,9 @@
 """Audience Center endpoints — on-demand audience and extraction instructions mapping."""
+
 from __future__ import annotations
 
-from uuid import UUID
+import contextlib
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy import desc, select
 
@@ -10,13 +12,13 @@ from app.models.artifact import Artifact
 from app.models.principal_identity import PrincipalIdentity
 from app.models.profile import Profile
 from app.models.run import Run, RunStatus
-from app.schemas.brief import BriefGenerateOut
 from app.schemas.audience import (
     AudienceInstructionsSummary,
-    PersonalAudienceInstructions,
     CompetitorsAudienceInstructions,
     ContextualAudienceInstructions,
+    PersonalAudienceInstructions,
 )
+from app.schemas.brief import BriefGenerateOut
 from app.services.orchestrator import execute_run
 
 router = APIRouter(prefix="/audience", tags=["audience"])
@@ -37,6 +39,7 @@ async def _resolve_principal(db, user) -> Profile:
 
 # --- Trigger Analysis --------------------------------------------------------
 
+
 @router.post("/analyze", response_model=BriefGenerateOut, status_code=status.HTTP_202_ACCEPTED)
 async def analyze_audience(
     db: DbSession,
@@ -55,7 +58,7 @@ async def analyze_audience(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Principal identity not ready (status: {pi.status if pi else 'missing'}). "
-                   "Wait for the PIDAA build to complete before triggering audience analysis.",
+            "Wait for the PIDAA build to complete before triggering audience analysis.",
         )
 
     run = Run(
@@ -79,8 +82,11 @@ async def analyze_audience(
 
 # --- Fetch Instructions ------------------------------------------------------
 
+
 @router.get("/instructions", response_model=AudienceInstructionsSummary)
-async def get_audience_instructions(db: DbSession, user: CurrentUser) -> AudienceInstructionsSummary:
+async def get_audience_instructions(
+    db: DbSession, user: CurrentUser
+) -> AudienceInstructionsSummary:
     """Retrieve the latest Personal, Competitors, and Contextual extraction instructions."""
     profile = await _resolve_principal(db, user)
 
@@ -112,32 +118,32 @@ async def get_audience_instructions(db: DbSession, user: CurrentUser) -> Audienc
 
     personal = None
     if "personal_audience_instructions" in artifacts_dict:
-        try:
-            personal = PersonalAudienceInstructions.model_validate(artifacts_dict["personal_audience_instructions"])
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            personal = PersonalAudienceInstructions.model_validate(
+                artifacts_dict["personal_audience_instructions"]
+            )
 
     competitors = None
     if "competitors_audience_instructions" in artifacts_dict:
-        try:
-            competitors = CompetitorsAudienceInstructions.model_validate(artifacts_dict["competitors_audience_instructions"])
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            competitors = CompetitorsAudienceInstructions.model_validate(
+                artifacts_dict["competitors_audience_instructions"]
+            )
 
     contextual = None
     if "contextual_audience_instructions" in artifacts_dict:
-        try:
-            contextual = ContextualAudienceInstructions.model_validate(artifacts_dict["contextual_audience_instructions"])
-        except Exception:
-            pass
-
+        with contextlib.suppress(Exception):
+            contextual = ContextualAudienceInstructions.model_validate(
+                artifacts_dict["contextual_audience_instructions"]
+            )
     from app.schemas.audience import FacebookAnalysisResult
+
     facebook_analysis = None
     if "facebook_analysis" in artifacts_dict:
-        try:
-            facebook_analysis = FacebookAnalysisResult.model_validate(artifacts_dict["facebook_analysis"])
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            facebook_analysis = FacebookAnalysisResult.model_validate(
+                artifacts_dict["facebook_analysis"]
+            )
 
     return AudienceInstructionsSummary(
         personal=personal,

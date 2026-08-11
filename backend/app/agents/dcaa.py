@@ -1,4 +1,5 @@
 """DCAA — Domain Context Aware Agent (Philippine politics)."""
+
 from __future__ import annotations
 
 from app.agents._helpers import identity_brief, upstream_brief
@@ -48,8 +49,7 @@ class DCAA(BaseAgent):
         )
 
         evidence = [
-            EvidenceRef(claim=f"DCAA risk flag: {f}", confidence=0.6)
-            for f in briefing.risk_flags
+            EvidenceRef(claim=f"DCAA risk flag: {f}", confidence=0.6) for f in briefing.risk_flags
         ]
 
         return AgentResult(

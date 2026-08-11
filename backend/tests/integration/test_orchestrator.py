@@ -1,4 +1,5 @@
-"""End-to-end orchestrator run with kill-switch (no external calls)."""
+"""End-to-end orchestrator run using the configured providers."""
+
 from sqlalchemy import select
 
 from app.db import session_scope
@@ -39,17 +40,13 @@ async def test_full_dag_produces_both_artifacts():
     # Assert: run completed and BOTH decision artifacts exist.
     async with session_scope() as db:
         run = (await db.execute(select(Run).where(Run.id == rid))).scalar_one()
-        arts = (
-            (await db.execute(select(Artifact).where(Artifact.run_id == rid)))
-            .scalars()
-            .all()
-        )
+        arts = (await db.execute(select(Artifact).where(Artifact.run_id == rid))).scalars().all()
 
     assert run.status == RunStatus.completed, f"got {run.status}, error={run.error}"
     kinds = {a.kind for a in arts}
     assert "perception_map" in kinds
     assert "action_card" in kinds
     assert "source_pack" in kinds  # SGA artifact
-    # Strategist made a confident-or-fallback action card; either way, it persisted.
+    # The provider-backed strategist persisted a valid action card.
     ac = next(a for a in arts if a.kind == "action_card")
     assert ac.payload.get("what")

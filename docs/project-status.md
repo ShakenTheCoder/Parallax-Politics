@@ -3,6 +3,7 @@
 **Snapshot date:** 2026-08-11  
 **Branch:** `audience-center`  
 **Base commit:** `758bbba` (`feat: initial platform implementation`)  
+**Latest repair checkpoint:** current `HEAD` (`fix: require real provider-backed intelligence`)
 **Repository:** local Git repository with an existing `origin` remote; no push performed.
 
 ## Current stage
@@ -19,7 +20,7 @@ Parallax Politics is at an integrated frontend/backend implementation checkpoint
 
 ### Backend
 
-- FastAPI control plane with async SQLAlchemy, PostgreSQL, Redis, Alembic, ARQ, OpenRouter, and EXA integration boundaries.
+- FastAPI control plane with async SQLAlchemy, PostgreSQL, Redis, Alembic, ARQ, NVIDIA NIM, and EXA integration boundaries.
 - Existing identity, brief, auth, profile, search, run, and admin APIs remain in place.
 - New API surfaces include:
   - `/api/v1/audience` for on-demand audience analysis and instruction retrieval.
@@ -37,25 +38,25 @@ feat: initial platform implementation
 3667cf8 Initial commit from Create Next App
 ```
 
-The repository is connected to `https://github.com/ShakenTheCoder/Parallax-Politics.git` as `origin`. The current implementation changes were uncommitted at the start of this work. A local checkpoint commit is created after this document is added. GitHub remains unchanged until an explicit push is requested.
+The repository is connected to `https://github.com/ShakenTheCoder/Parallax-Politics.git` as `origin`. The current implementation changes were uncommitted at the start of this work. A local repair checkpoint is created after validation. GitHub remains unchanged until an explicit push is requested.
 
 ## Validation snapshot
 
 | Check | Result | Notes |
 |---|---|---|
-| `npm run build` | Pass | Next.js production build and TypeScript validation complete successfully. |
-| `npm run lint` | Fails | Existing checkpoint has React hook/state lint errors in `src/app/admin/page.tsx`, `src/app/audience/page.tsx`, `src/app/brief/page.tsx`, and other warnings. |
-| `cd backend && uv run pytest -q` | Fails during collection | `tests/unit/test_router.py` imports `HAIKU_4_5`, which is not currently exported by `app.llm.router`. |
-| `cd backend && uv run ruff check app tests` | Fails | 48 Ruff findings, including import ordering, unused imports, and style violations across existing and newly added code. |
-| `cd backend && uv run alembic heads` | Not completed | The local `uv` environment could not spawn the `alembic` executable; verify the backend environment before running migrations. |
+| `npm run build` | Pass after repair | Next.js production build and TypeScript validation complete successfully. |
+| `npm run lint` | Pass with warnings | React hook/state errors are resolved; remaining warnings are mostly image optimization and unused legacy UI code. |
+| `cd backend && uv run pytest -q tests/unit` | Pass | 28 unit tests pass against running PostgreSQL/Redis services. |
+| `cd backend && uv run pytest -q` | Not completed | The legacy full orchestrator integration test invokes live EXA/NVIDIA calls and did not finish during the bounded validation run. |
+| `cd backend && uv run ruff check app tests` | Pass | All backend Ruff checks pass. |
+| `cd backend && uv run alembic upgrade head` | Pass | Current database revision is `o0b6c7d8e9f3`. |
+| `curl http://127.0.0.1:8000/health` | Pass | FastAPI started successfully and returned version `0.1.0`. |
 
 ## Recommended next checkpoint
 
-1. Repair the backend test/router contract (`HAIKU_4_5`) and rerun the full backend suite.
-2. Resolve the frontend lint errors, starting with effect-triggered loading patterns and the module-level mutation in `brief/page.tsx`.
-3. Run Ruff formatting/import fixes, then review behavior-sensitive findings manually.
-4. Verify Alembic migrations against a local PostgreSQL instance and exercise the API/frontend flow with the backend services running.
-5. Split the current broad checkpoint into focused commits before feature work continues, if a granular history is preferred.
+1. Replace or narrow the legacy full orchestrator integration test so live provider calls have explicit timeouts and do not block the test runner.
+2. Remove the remaining unused `IdentityDrawer` UI code and image warnings if a zero-warning frontend lint gate is required.
+3. Exercise an authenticated end-to-end brief/audience flow with a real principal and provider-backed responses.
 
 ## Working commands
 
@@ -77,4 +78,4 @@ make lint
 make typecheck
 ```
 
-Do not commit `.env` files or credentials. Only the checked-in `.env.example` files are intended for configuration guidance.
+Runtime analytical calls now require provider responses. There is no LLM/EXA mock mode or deterministic synthetic result path. Do not commit `.env` files or credentials; only the checked-in `.env.example` files are intended for configuration guidance.

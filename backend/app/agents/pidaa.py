@@ -10,6 +10,7 @@ Pipeline:
 4. Aggregator pass: stitch + add source_index + coverage_gaps.
 5. Persist PrincipalIdentity row, emit AgentResult.
 """
+
 from __future__ import annotations
 
 import asyncio  # still used for EXA fan-out gather
@@ -39,9 +40,17 @@ _GROUP_SECTIONS: dict[str, tuple[str, ...]] = {
     "D": ("controversies", "network"),
 }
 _IDENTITY_KEYS = (
-    "basics", "family", "education", "career_timeline", "current_position",
-    "party_history", "electoral_record", "policy_stances", "voice_signature",
-    "controversies", "network",
+    "basics",
+    "family",
+    "education",
+    "career_timeline",
+    "current_position",
+    "party_history",
+    "electoral_record",
+    "policy_stances",
+    "voice_signature",
+    "controversies",
+    "network",
 )
 _EXA_FACETS = (
     "{name} Philippines politician biography",
@@ -61,106 +70,8 @@ class PIDAA(BaseAgent):
     max_cost_usd = 0.50
 
     async def _run(self, ctx: AgentContext) -> AgentResult:
-        """Build a source-backed baseline dossier within a bounded few-second SLA."""
-        candidate: dict[str, Any] = ctx.extra.get("confirmed_candidate") or {}
-        full_name: str = candidate.get("full_name") or ctx.situation_prompt[:100]
-        exa = get_exa_client()
-        queries = [
-            f"{full_name} Philippines politician biography current role",
-            f"{full_name} Philippines party election record",
-            f"{full_name} Philippines policy controversy",
-        ]
-
-        async def _bounded_search(query: str) -> list[ExaSearchResult]:
-            try:
-                return await asyncio.wait_for(
-                    exa.search(query, num_results=5, text_chars=300),
-                    timeout=3.0,
-                )
-            except Exception as exc:
-                self.log.warning("pidaa.fast_search_skipped", query=query, error=str(exc))
-                return []
-
-        search_tasks = [_bounded_search(query) for query in queries]
-        portrait_task = resolve_wikimedia_portrait(full_name)
-        gathered = await asyncio.gather(*search_tasks, portrait_task)
-        search_results = gathered[:-1]
-        profile_image_url = gathered[-1] if isinstance(gathered[-1], str) else None
-
-        pool: dict[str, ExaSearchResult] = {}
-        for results in search_results:
-            for item in results:
-                pool.setdefault(item.url, item)
-        ranked = sorted(
-            pool.values(),
-            key=lambda item: item.credibility_score * (item.score if item.score is not None else 0.5),
-            reverse=True,
-        )[:12]
-        source_index = {"sources": [{
-            "url": item.url, "title": item.title, "domain": item.domain,
-            "published_at": item.published_at,
-            "credibility_score": round(item.credibility_score, 2),
-        } for item in ranked]}
-        provenance_url = ranked[0].url if ranked else "domain_knowledge"
-        basics = {
-            "full_name": full_name,
-            "aliases": list(candidate.get("aliases") or []),
-            "born": candidate.get("born"),
-            "birthplace": candidate.get("birthplace"),
-            "region": candidate.get("region"),
-            "profile_image_url": profile_image_url,
-            "summary": candidate.get("one_line_bio"),
-            "_provenance": {"source_url": provenance_url, "verified": bool(ranked)},
-        }
-        current_position = {
-            "role": candidate.get("current_role"),
-            "jurisdiction": candidate.get("region"),
-            "_provenance": {"source_url": provenance_url, "verified": bool(ranked)},
-        }
-        party = candidate.get("party")
-        merged: dict[str, Any] = {
-            "basics": basics,
-            "family": {},
-            "education": {},
-            "career_timeline": {},
-            "current_position": current_position,
-            "party_history": {"affiliations": [{"party": party}] if party else []},
-            "electoral_record": {},
-            "policy_stances": {},
-            "voice_signature": {},
-            "controversies": {},
-            "network": {},
-            "source_index": source_index,
-        }
-        coverage_gaps = [
-            "Family and education require deep retrieval",
-            "Career and electoral history require deep retrieval",
-            "Policy, controversy, and network analysis require deep retrieval",
-        ]
-        structured_gaps = detect_gaps_from_pidaa_output(merged)
-        data_completeness = calculate_data_completeness(merged)
-        subject_id = UUID(str(ctx.extra["profile_id"])) if ctx.extra.get("profile_id") else None
-        if subject_id:
-            await self._persist(subject_id, full_name, merged, coverage_gaps, structured_gaps, data_completeness, profile_image_url)
-
-        artifact = PrincipalIdentityArtifact(
-            full_name=full_name,
-            profile_image_url=profile_image_url,
-            basics=basics,
-            current_position=current_position,
-            party_history=merged["party_history"],
-            source_index=source_index,
-            coverage_gaps=coverage_gaps,
-            coverage_gaps_structured=structured_gaps,
-            data_completeness_score=data_completeness,
-        )
-        return AgentResult(
-            agent=self.name,
-            summary=f"PIDAA fast identity built for {full_name} from {len(ranked)} ranked sources.",
-            payload=artifact.model_dump(),
-            model="deterministic-fast-path",
-            confidence=float(candidate.get("confidence") or 0.5),
-        )
+        """Build the identity from live source retrieval and LLM synthesis."""
+        return await self._run_deep(ctx)
 
     async def _run_deep(self, ctx: AgentContext) -> AgentResult:
         llm = get_llm_client()
@@ -209,15 +120,17 @@ class PIDAA(BaseAgent):
         candidate_ctx = json.dumps(candidate, ensure_ascii=False)
         # One structured synthesis avoids four serial/queued model calls while
         # retaining enough evidence for the full dossier.
-        _SOURCES_PER_GROUP = 24
+        sources_per_group = 24
 
         def _group_prompt(group: str) -> str:
             sections = ", ".join(_GROUP_SECTIONS[group])
             # Each group gets a slightly different slice for coverage breadth
             idx = list(_SECTION_GROUPS).index(group)
-            start = (idx * _SOURCES_PER_GROUP) % max(1, len(sources_payload))
-            slice_ = (sources_payload[start:start + _SOURCES_PER_GROUP]
-                      or sources_payload[:_SOURCES_PER_GROUP])
+            start = (idx * sources_per_group) % max(1, len(sources_payload))
+            slice_ = (
+                sources_payload[start : start + sources_per_group]
+                or sources_payload[:sources_per_group]
+            )
             sources_ctx = json.dumps(slice_, ensure_ascii=False)
             return (
                 f"Confirmed candidate:\n{candidate_ctx}\n\n"
@@ -262,7 +175,9 @@ class PIDAA(BaseAgent):
             for key in _IDENTITY_KEYS:
                 if key in result:
                     merged[key] = result[key]
-        profile_image_url = candidate.get("photo_url") or (merged.get("basics") or {}).get("profile_image_url")
+        profile_image_url = candidate.get("photo_url") or (merged.get("basics") or {}).get(
+            "profile_image_url"
+        )
 
         # Build source_index from top-12 sources
         source_index = {
@@ -295,7 +210,15 @@ class PIDAA(BaseAgent):
             UUID(str(ctx.extra["profile_id"])) if ctx.extra.get("profile_id") else None
         )
         if subject_id:
-            await self._persist(subject_id, full_name, merged, coverage_gaps, structured_gaps, data_completeness, profile_image_url)
+            await self._persist(
+                subject_id,
+                full_name,
+                merged,
+                coverage_gaps,
+                structured_gaps,
+                data_completeness,
+                profile_image_url,
+            )
 
         # --- 7. Build artifact -------------------------------------------------
         artifact = PrincipalIdentityArtifact(
@@ -335,6 +258,7 @@ class PIDAA(BaseAgent):
         if structured_gaps and ctx.extra.get("auto_scdra", True):
             try:
                 from app.agents.scdra import SCDRA
+
                 scdra = SCDRA()
                 scdra_ctx = AgentContext(
                     run_id=ctx.run_id,
@@ -373,7 +297,7 @@ class PIDAA(BaseAgent):
                 pi = PrincipalIdentity(profile_id=profile_id)
                 db.add(pi)
 
-            for key in _IDENTITY_KEYS + ("source_index",):
+            for key in (*_IDENTITY_KEYS, "source_index"):
                 if key in sections:
                     setattr(pi, key, sections[key])
             pi.coverage_gaps = coverage_gaps

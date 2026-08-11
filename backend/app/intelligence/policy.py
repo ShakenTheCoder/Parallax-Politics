@@ -1,4 +1,5 @@
 """Collection and cohort privacy policy boundaries."""
+
 from __future__ import annotations
 
 import asyncio
@@ -57,7 +58,9 @@ def enforce_same_source(url: str, base_url: str, allowed_paths: list[str]) -> No
     parsed = urlparse(url)
     base = urlparse(base_url)
     if parsed.scheme != base.scheme or parsed.hostname != base.hostname or parsed.port != base.port:
-        raise CollectionPolicyError("collection redirects and paths must remain on the registered source")
+        raise CollectionPolicyError(
+            "collection redirects and paths must remain on the registered source"
+        )
     if allowed_paths and not any(parsed.path.startswith(prefix) for prefix in allowed_paths):
         raise CollectionPolicyError("requested path is outside the source allowlist")
 
@@ -67,4 +70,3 @@ def enforce_cohort_privacy(sample_size: int, minimum: int = 100) -> None:
         raise CollectionPolicyError(
             f"cohort contains {sample_size} observations; minimum publishable size is {minimum}"
         )
-

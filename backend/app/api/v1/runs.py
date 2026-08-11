@@ -1,5 +1,7 @@
 """Run + artifact endpoints (orchestrator wired)."""
+
 import asyncio
+import contextlib
 from uuid import UUID
 
 import orjson
@@ -52,7 +54,7 @@ def _profile_to_out(profile: Profile | None) -> PrincipalOut | None:
 def _run_to_out(run: Run, artifacts: list[Artifact], profile: Profile | None = None) -> RunOut:
     out_artifacts = RunArtifacts()
     for art in artifacts:
-        try:
+        with contextlib.suppress(Exception):
             if art.kind == "source_pack":
                 out_artifacts.source_pack = SourcePack.model_validate(art.payload)
             elif art.kind == "domain_briefing":
@@ -60,9 +62,9 @@ def _run_to_out(run: Run, artifacts: list[Artifact], profile: Profile | None = N
             elif art.kind == "demographic_briefing":
                 out_artifacts.demographic_briefing = DemographicBriefing.model_validate(art.payload)
             elif art.kind == "principal_identity":
-                out_artifacts.principal_identity = PrincipalIdentityArtifact.model_validate(art.payload)
-        except Exception:
-            pass
+                out_artifacts.principal_identity = PrincipalIdentityArtifact.model_validate(
+                    art.payload
+                )
     run_kind = (run.meta or {}).get("kind") or "situation"
     return RunOut(
         id=run.id,
@@ -112,10 +114,7 @@ async def run_events(
 async def get_my_latest_full_run(db: DbSession, user: CurrentUser) -> RunOut:
     """Return the most recent run for the current user with all artifacts and principal snapshot."""
     run_res = await db.execute(
-        select(Run)
-        .where(Run.requested_by == user.id)
-        .order_by(desc(Run.created_at))
-        .limit(1)
+        select(Run).where(Run.requested_by == user.id).order_by(desc(Run.created_at)).limit(1)
     )
     run = run_res.scalar_one_or_none()
     if not run:

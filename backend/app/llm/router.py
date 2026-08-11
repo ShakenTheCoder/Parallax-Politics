@@ -1,8 +1,9 @@
 """Model router and pricing.
 
 Centralized so model IDs and prices can be bumped without touching agents.
-Prices are USD per 1M tokens — configured for NVIDIA NIM free endpoints.
+Prices are USD per 1M tokens as configured for the NVIDIA NIM account.
 """
+
 from __future__ import annotations
 
 import enum
@@ -10,8 +11,8 @@ from dataclasses import dataclass
 
 
 class ModelTier(enum.StrEnum):
-    cheap = "cheap"        # extraction, ranking, classification
-    default = "default"    # synthesis, reasoning
+    cheap = "cheap"  # extraction, ranking, classification
+    default = "default"  # synthesis, reasoning
     escalate = "escalate"  # Strategist hard cases only (gated by daily Opus cap)
 
 
@@ -19,34 +20,32 @@ class ModelTier(enum.StrEnum):
 class ModelSpec:
     id: str
     tier: ModelTier
-    input_per_mtok: float        # USD / 1M input tokens
-    output_per_mtok: float       # USD / 1M output tokens
-    cache_write_per_mtok: float  # Cache write multiplier (not applicable for free tier)
-    cache_read_per_mtok: float   # Cache reads (not applicable for free tier)
-    family: str                  # gemma
+    input_per_mtok: float  # USD / 1M input tokens
+    output_per_mtok: float  # USD / 1M output tokens
+    cache_write_per_mtok: float
+    cache_read_per_mtok: float
+    family: str
     context_window: int = 200_000
-    fallback_id: str | None = None
 
 
 # --- Registered models -------------------------------------------------------
-# NVIDIA NIM free endpoint. This model is listed as available on NVIDIA's
-# build.nvidia.com model page and uses the OpenAI-compatible NIM API.
+# NVIDIA NIM endpoint. This model uses the OpenAI-compatible NIM API.
 
-GEMMA_4_31B = ModelSpec(
+LLAMA_3_3_70B = ModelSpec(
     id="meta/llama-3.3-70b-instruct",
     tier=ModelTier.default,
-    input_per_mtok=0.0,  # Free tier
-    output_per_mtok=0.0,  # Free tier
-    cache_write_per_mtok=0.0,  # Not applicable for free tier
-    cache_read_per_mtok=0.0,   # Not applicable for free tier
+    input_per_mtok=0.0,
+    output_per_mtok=0.0,
+    cache_write_per_mtok=0.0,
+    cache_read_per_mtok=0.0,
     family="llama",
 )
 
-# Use this verified NVIDIA free endpoint for all tiers.
+# Use this registered NVIDIA model for all tiers until tier-specific models are configured.
 _REGISTRY: dict[ModelTier, ModelSpec] = {
-    ModelTier.cheap: GEMMA_4_31B,
-    ModelTier.default: GEMMA_4_31B,
-    ModelTier.escalate: GEMMA_4_31B,
+    ModelTier.cheap: LLAMA_3_3_70B,
+    ModelTier.default: LLAMA_3_3_70B,
+    ModelTier.escalate: LLAMA_3_3_70B,
 }
 
 _BY_ID: dict[str, ModelSpec] = {m.id: m for m in _REGISTRY.values()}
@@ -68,8 +67,6 @@ def estimate_cost_usd(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
 ) -> float:
-    # NVIDIA free endpoint: all costs are $0
-    # Cache operations are not applicable for the free tier
     return round(
         (input_tokens / 1_000_000) * model.input_per_mtok
         + (output_tokens / 1_000_000) * model.output_per_mtok

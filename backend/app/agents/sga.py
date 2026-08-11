@@ -7,6 +7,7 @@ Pipeline:
 4. Ask the LLM (default tier) to select the top N and identify coverage gaps.
 5. Emit `SourcePack` artifact.
 """
+
 from __future__ import annotations
 
 import json

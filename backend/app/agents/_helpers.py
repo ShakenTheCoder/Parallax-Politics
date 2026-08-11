@@ -1,4 +1,5 @@
 """Shared helpers for context-layer agents."""
+
 from __future__ import annotations
 
 import json
@@ -38,8 +39,13 @@ def identity_brief(ctx: AgentContext, max_chars: int = 2500) -> str:
         return "(no principal identity available)"
     p = pidaa.payload or {}
     keep = [
-        "full_name", "basics", "current_position", "party_history",
-        "policy_stances", "controversies", "network",
+        "full_name",
+        "basics",
+        "current_position",
+        "party_history",
+        "policy_stances",
+        "controversies",
+        "network",
     ]
     digest = {k: p.get(k) for k in keep if p.get(k)}
     text = json.dumps(digest, ensure_ascii=False)

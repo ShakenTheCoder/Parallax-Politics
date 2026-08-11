@@ -1,2 +1,1 @@
 """Political-intelligence domain services."""
-

@@ -3,6 +3,7 @@
 Providers receive only bounded evidence projections. They must not infer an
 individual's beliefs or turn neural-response outputs into electoral claims.
 """
+
 from __future__ import annotations
 
 import math
@@ -86,17 +87,14 @@ class ConservativeLexicalBaseline:
         evaluated_at: datetime,
     ) -> PopulationEstimate:
         representative = any(
-            item.authority in {"representative_poll", "consented_panel"}
-            for item in observations
+            item.authority in {"representative_poll", "consented_panel"} for item in observations
         )
         scores = [self._sentiment_score(item.content) for item in observations]
         lexical = sum(scores) / len(scores) if scores else 0.0
         enough = len(observations) >= 5
         confidence_cap = 0.82 if representative else 0.58
         confidence = (
-            min(confidence_cap, 0.18 + math.log1p(len(observations)) / 10)
-            if enough
-            else 0.1
+            min(confidence_cap, 0.18 + math.log1p(len(observations)) / 10) if enough else 0.1
         )
         central = round(lexical * 8, 1) if enough else 0.0
         uncertainty = max(4.0, 14.0 - min(len(observations), 100) / 10)
@@ -129,4 +127,3 @@ class ConservativeLexicalBaseline:
 
 
 population_response_provider: PopulationResponseProvider = ConservativeLexicalBaseline()
-

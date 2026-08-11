@@ -23,8 +23,8 @@ export function ScrambleLoader({
 
   useEffect(() => {
     if (reduce) {
-      setText(target);
-      return;
+      const task = window.setTimeout(() => setText(target), 0);
+      return () => window.clearTimeout(task);
     }
 
     let tick = 0;

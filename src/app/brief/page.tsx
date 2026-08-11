@@ -40,27 +40,12 @@ const POLL_MS = 5000;
 
 // --- helpers -----------------------------------------------------------------
 
-const STANCE_STYLES: Record<TopicStance, { label: string; cls: string }> = {
-  lead: { label: "LEAD", cls: "border-green-500 text-green-500" },
-  engage: { label: "ENGAGE", cls: "border-yellow-500 text-yellow-500" },
-  avoid: { label: "AVOID", cls: "border-red-500 text-red-500" },
-};
-
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
-}
-
-function StanceBadge({ stance }: { stance: TopicStance }) {
-  const s = STANCE_STYLES[stance];
-  return (
-    <span className={`text-[10px] font-bold tracking-widest border px-2 py-0.5 ${s.cls}`}>
-      {s.label}
-    </span>
-  );
 }
 
 function SectionTitle({ title }: { title: string }) {
@@ -219,7 +204,7 @@ function SourcesView({ brief }: { brief: BriefOut }) {
   );
 }
 
-function BriefDetail({ brief }: { brief: BriefOut }) {
+function BriefDetail({ brief, onSeeNextMove }: { brief: BriefOut; onSeeNextMove: () => void }) {
   const [topicTab, setTopicTab] = useState<TopicStance | "all">("lead");
 
   const leadTopics = brief.topics.filter((t) => t.stance === "lead");
@@ -295,7 +280,7 @@ function BriefDetail({ brief }: { brief: BriefOut }) {
             <p className="text-sm font-medium mt-1 line-clamp-2">{brief.action_card.what}</p>
           </div>
           <button
-            onClick={() => (window as unknown as { setActiveTab: (t: "brief" | "sources" | "nextmove" | "history") => void }).setActiveTab?.("nextmove")}
+            onClick={onSeeNextMove}
             className="px-4 py-2 bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity shrink-0 w-full sm:w-auto"
           >
             See next move →
@@ -338,7 +323,7 @@ function IdentityPanel({ data }: { data: MyIdentityOut }) {
         const hasBasics = typeof basics.birth_date === "string" || typeof basics.birthplace === "string" || typeof basics.citizenship === "string" || typeof basics.gender === "string";
         const hasPosition = typeof id.current_position.role === "string";
         const hasParty = Array.isArray(id.party_history) && id.party_history.length > 0;
-        const validStances = Object.entries(id.policy_stances).filter(([_, v]) => {
+        const validStances = Object.entries(id.policy_stances).filter(([, v]) => {
           const val = typeof v === "object" && v && "value" in v ? String((v as { value?: string }).value) : typeof v === "string" ? v : "";
           return val && val !== "null" && val !== "";
         });
@@ -614,10 +599,6 @@ export default function BriefPage() {
   const [steps, setSteps] = useState<StepState[]>(makeSteps());
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"brief" | "sources" | "nextmove" | "history">("brief");
-  // Expose setActiveTab for the "See next move" button
-  if (typeof window !== "undefined") {
-    (window as unknown as { setActiveTab: typeof setActiveTab }).setActiveTab = setActiveTab;
-  }
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const eventsAbortRef = useRef<AbortController | null>(null);
 
@@ -736,7 +717,6 @@ export default function BriefPage() {
   };
 
   const pidaaReady = identity?.pidaa_status === "ready";
-  const pidaaStatus = identity?.pidaa_status ?? "loading";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -809,7 +789,7 @@ export default function BriefPage() {
             )}
 
             {/* Tab content */}
-            {activeTab === "brief" && <BriefDetail brief={active} />}
+            {activeTab === "brief" && <BriefDetail brief={active} onSeeNextMove={() => setActiveTab("nextmove")} />}
             {activeTab === "sources" && <SourcesView brief={active} />}
             {activeTab === "nextmove" && <NextMoveView brief={active} />}
             {activeTab === "history" && <HistoryView briefs={briefs} selectedId={active?.id ?? null} onSelect={handleSelect} />}

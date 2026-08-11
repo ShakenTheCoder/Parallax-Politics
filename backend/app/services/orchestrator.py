@@ -4,6 +4,7 @@ Two modes (selected by Run.meta.kind):
   pidaa_build  →  PIDAA only  (principal identity creation)
   brief_build  →  Brief agent (loads PIDAA, runs SGA + DCAA + DEMCAA internally, synthesizes)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -31,7 +32,7 @@ async def execute_run(run_id: UUID) -> None:
 
     Dispatches based on Run.meta.kind:
       - "pidaa_build" → PIDAA only
-      - "brief_build" → Brief agent (default fallback)
+      - "brief_build" → Brief agent
     """
     channel = f"run.{run_id}"
 
@@ -85,49 +86,18 @@ async def execute_run(run_id: UUID) -> None:
 
 # --- pipelines ---------------------------------------------------------------
 
+
 async def _run_pidaa_pipeline(run_id: UUID, ctx: AgentContext) -> None:
-    """Publish a fast identity, then enrich it deeply in the same background run."""
+    """Build and persist the source-backed identity before dependent agents run."""
     pidaa_result = await PIDAA().run(ctx)
     await _persist_artifact(run_id, "principal_identity", pidaa_result)
 
-    # The fast record is available immediately. Deep enrichment may take longer,
-    # but it no longer delays identity creation or the initial profile page.
-    await _set_identity_status(ctx, "enriching")
-    try:
-        deep_ctx = AgentContext(
-            run_id=ctx.run_id,
-            situation_prompt=ctx.situation_prompt,
-            subject_slug=ctx.subject_slug,
-            pack_id=ctx.pack_id,
-            upstream={"PIDAA": pidaa_result},
-            extra={**ctx.extra, "auto_scdra": False},
-        )
-        deep_result = await PIDAA()._run_deep(deep_ctx)
-        await _persist_artifact(run_id, "principal_identity_deep", deep_result)
-        pidaa_result = deep_result
-    except Exception as exc:
-        log.warning("orchestrator.pidaa_deep_enrichment_failed", error=str(exc))
-        await _set_identity_status(ctx, "ready")
-
     # Automatically run competitor analysis after PIDAA
     from app.agents.competitor_analysis import CompetitorAnalysisAgent
+
     ctx.upstream["PIDAA"] = pidaa_result
     comp_result = await CompetitorAnalysisAgent().run(ctx)
     await _persist_artifact(run_id, "competitor_analysis", comp_result)
-
-
-async def _set_identity_status(ctx: AgentContext, status_value: str) -> None:
-    profile_id = ctx.extra.get("profile_id")
-    if not profile_id:
-        return
-    from app.models.principal_identity import PrincipalIdentity
-    async with session_scope() as db:
-        result = await db.execute(
-            select(PrincipalIdentity).where(PrincipalIdentity.profile_id == UUID(str(profile_id)))
-        )
-        identity = result.scalar_one_or_none()
-        if identity:
-            identity.status = status_value
 
 
 async def _run_audience_pipeline(run_id: UUID, ctx: AgentContext) -> None:
@@ -135,9 +105,10 @@ async def _run_audience_pipeline(run_id: UUID, ctx: AgentContext) -> None:
     Hydrates the principal's identity and previous briefings to make them context-aware.
     """
     import asyncio
-    from app.agents.personal_audience import PersonalAudienceAgent
+
     from app.agents.competitors_audience import CompetitorsAudienceAgent
     from app.agents.contextual_audience import ContextualAudienceAgent
+    from app.agents.personal_audience import PersonalAudienceAgent
 
     # Hydrate context
     await _inject_pidaa_into_ctx(ctx)
@@ -145,7 +116,10 @@ async def _run_audience_pipeline(run_id: UUID, ctx: AgentContext) -> None:
 
     # Let UI know step started
     channel = f"run.{run_id}"
-    await publish_event(channel, {"type": "step.started", "step": "audience_analysis", "label": "Running Audience Agents"})
+    await publish_event(
+        channel,
+        {"type": "step.started", "step": "audience_analysis", "label": "Running Audience Agents"},
+    )
 
     # Run in parallel
     async def run_personal():
@@ -187,16 +161,23 @@ async def _run_audience_pipeline(run_id: UUID, ctx: AgentContext) -> None:
         await _persist_artifact(run_id, "contextual_audience_instructions", ctx_res)
 
     # Now run Facebook Analysis leveraging the generated instructions
-    await publish_event(channel, {"type": "step.started", "step": "facebook_analysis", "label": "Running Facebook Landscape Analysis"})
+    await publish_event(
+        channel,
+        {
+            "type": "step.started",
+            "step": "facebook_analysis",
+            "label": "Running Facebook Landscape Analysis",
+        },
+    )
     from app.agents.facebook_analysis import FacebookAnalysisAgent
-    
+
     try:
         fb_res = await FacebookAnalysisAgent().run(ctx)
         if fb_res:
             await _persist_artifact(run_id, "facebook_analysis", fb_res)
     except Exception as exc:
         log.warning("orchestrator.facebook_analysis_failed", error=str(exc))
-        
+
     await publish_event(channel, {"type": "step.completed", "step": "facebook_analysis"})
     await publish_event(channel, {"type": "step.completed", "step": "audience_analysis"})
 
@@ -212,6 +193,7 @@ async def _inject_pidaa_into_ctx(ctx: AgentContext) -> None:
         return
 
     from app.models.principal_identity import PrincipalIdentity
+
     async with session_scope() as db:
         res = await db.execute(
             select(PrincipalIdentity).where(PrincipalIdentity.profile_id == profile_uuid)
@@ -221,7 +203,8 @@ async def _inject_pidaa_into_ctx(ctx: AgentContext) -> None:
             return
         payload = {
             "full_name": (pi.basics or {}).get("full_name", "")
-            or (ctx.extra.get("full_name") if isinstance(ctx.extra, dict) else "") or "",
+            or (ctx.extra.get("full_name") if isinstance(ctx.extra, dict) else "")
+            or "",
             "basics": pi.basics or {},
             "family": pi.family or {},
             "education": pi.education or {},
@@ -254,6 +237,7 @@ async def _inject_latest_analysis_into_ctx(ctx: AgentContext) -> None:
         return
 
     from app.models.artifact import Artifact
+
     async with session_scope() as db:
         # Latest domain briefing (DCAA)
         dcaa_res = await db.execute(
@@ -312,11 +296,13 @@ async def _run_brief_pipeline(run_id: UUID, ctx: AgentContext) -> None:
 
 # --- helpers ----------------------------------------------------------------
 
+
 async def _resolve_subject(db, run: Run) -> tuple[str | None, dict]:
     meta: dict = run.meta or {}
     if not run.subject_id:
         return None, meta
     from app.models.profile import Profile
+
     res = await db.execute(select(Profile).where(Profile.id == run.subject_id))
     p = res.scalar_one_or_none()
     if p:
@@ -355,10 +341,12 @@ async def _finalize_run(run_id: UUID, *, status: RunStatus, error: str | None = 
         from sqlalchemy import func
 
         from app.models.llm_call import LLMCall
+
         total = (
             await db.execute(
-                select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0))
-                .where(LLMCall.run_id == run_id)
+                select(func.coalesce(func.sum(LLMCall.cost_usd), 0.0)).where(
+                    LLMCall.run_id == run_id
+                )
             )
         ).scalar_one()
         run.total_cost_usd = float(total or 0.0)

@@ -1,4 +1,5 @@
 """Async Redis client + pub/sub helpers."""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -33,6 +34,7 @@ async def close_redis() -> None:
 
 
 # --- Pub/Sub event bus -------------------------------------------------------
+
 
 async def publish(channel: str, payload: dict[str, Any]) -> int:
     return await get_redis().publish(channel, orjson.dumps(payload).decode())

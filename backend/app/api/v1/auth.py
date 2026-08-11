@@ -36,12 +36,18 @@ async def _enforce_login_limit(request: Request, username: str) -> list[str]:
             if attempts == 1:
                 await redis.expire(key, settings.login_attempt_window_seconds)
             if attempts > limit:
-                raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Authentication temporarily unavailable")
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Authentication temporarily unavailable",
+                )
     except HTTPException:
         raise
     except Exception as exc:
         if settings.is_prod:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Authentication temporarily unavailable") from exc
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication temporarily unavailable",
+            ) from exc
     return list(limits)
 
 
@@ -58,9 +64,7 @@ async def login(payload: LoginRequest, request: Request, db: DbSession) -> Token
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password"
         )
-    profile_res = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == str(user.id))
-    )
+    profile_res = await db.execute(select(UserProfile).where(UserProfile.user_id == str(user.id)))
     has_profile = profile_res.scalar_one_or_none() is not None
     token = create_access_token(subject=str(user.id), extra={"role": user.role})
     with contextlib.suppress(Exception):
@@ -79,9 +83,7 @@ async def login(payload: LoginRequest, request: Request, db: DbSession) -> Token
 
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser, db: DbSession) -> UserOut:
-    profile_res = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == str(user.id))
-    )
+    profile_res = await db.execute(select(UserProfile).where(UserProfile.user_id == str(user.id)))
     has_profile = profile_res.scalar_one_or_none() is not None
     return UserOut(
         id=str(user.id),

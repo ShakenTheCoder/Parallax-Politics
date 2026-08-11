@@ -1,4 +1,5 @@
 """ARQ worker configuration for persistent background intelligence work."""
+
 from typing import ClassVar
 
 from arq import cron

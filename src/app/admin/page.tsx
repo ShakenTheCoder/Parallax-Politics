@@ -29,10 +29,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function Tag({ label }: { label: string }) {
-  return <span className="text-[10px] uppercase tracking-widest border border-border px-2 py-1 text-muted-foreground">{label}</span>;
-}
-
 function SectionTitle({ title }: { title: string }) {
   return <p className="text-xs font-semibold tracking-widest uppercase text-muted-foreground mb-2">{title}</p>;
 }
@@ -117,6 +113,7 @@ function IdentityDrawer({ detail, onClose }: { detail: PrincipalDetail; onClose:
             {detail.built_at && <span className="text-xs text-muted-foreground">{new Date(detail.built_at).toLocaleString()}</span>}
             <span className="text-xs text-muted-foreground">@{detail.username}</span>
           </div>
+
 
           {id.coverage_gaps.length > 0 && (
             <div>
@@ -273,8 +270,11 @@ export default function AdminConsole() {
   }, [router]);
 
   useEffect(() => {
-    guardAdmin();
-    loadPrincipals();
+    const task = window.setTimeout(() => {
+      guardAdmin();
+      void loadPrincipals();
+    }, 0);
+    return () => window.clearTimeout(task);
   }, [guardAdmin, loadPrincipals]);
 
   const handleSearch = async (e: React.FormEvent, hint?: string) => {

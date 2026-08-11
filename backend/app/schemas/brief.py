@@ -1,4 +1,5 @@
 """Brief agent I/O contracts."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -33,6 +34,7 @@ class BriefTopic(BaseModel):
 
 class BriefActionCard(BaseModel):
     """The principal's next move — same shape as the old ActionCard, but Brief-scoped."""
+
     what: str
     who: str
     where: str
@@ -55,8 +57,10 @@ class BriefSource(BaseModel):
 
 # --- API I/O ----------------------------------------------------------------
 
+
 class BriefSummary(BaseModel):
     """Lightweight row for history list."""
+
     id: UUID
     created_at: datetime
     top_risk_label: str
@@ -68,6 +72,7 @@ class BriefSummary(BaseModel):
 
 class BriefOut(BaseModel):
     """Full brief detail."""
+
     id: UUID
     profile_id: UUID
     run_id: UUID | None = None

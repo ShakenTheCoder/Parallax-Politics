@@ -1,4 +1,5 @@
 """SQLAlchemy models."""
+
 from app.models.artifact import Artifact
 from app.models.competitor import Competitor
 from app.models.evidence import Evidence

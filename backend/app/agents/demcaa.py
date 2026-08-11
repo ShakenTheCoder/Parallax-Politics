@@ -1,4 +1,5 @@
 """DEMCAA — Demographic Context Aware Agent (Philippines)."""
+
 from __future__ import annotations
 
 from app.agents._helpers import identity_brief, upstream_brief

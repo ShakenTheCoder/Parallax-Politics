@@ -1,6 +1,16 @@
 from fastapi import APIRouter
 
-from app.api.v1 import admin, audience, auth, briefs, intelligence, profiles, runs, search, superadmin
+from app.api.v1 import (
+    admin,
+    audience,
+    auth,
+    briefs,
+    intelligence,
+    profiles,
+    runs,
+    search,
+    superadmin,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)

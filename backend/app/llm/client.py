@@ -3,10 +3,9 @@
 Responsibilities:
 - single async client (process-wide).
 - pre-call cost reservation via TokenBudgetManager, post-call reconciliation.
-- kill switch (`LLM_DISABLED=true`) returns a deterministic mock so UI dev /
-  CI can run without burning budget.
 - persists per-call telemetry to `llm_calls` table.
 """
+
 from __future__ import annotations
 
 import json
@@ -126,9 +125,6 @@ class NVIDIAClient:
         cache_system: bool = True,
     ) -> LLMResponse:
         """Run a single completion with budget guarding + telemetry."""
-        if self.settings.llm_disabled:
-            return self._mocked_response(agent=agent, tier=tier, json_mode=json_mode)
-
         model = pick_model(tier)
         run_id_str = str(run_id) if run_id else None
 
@@ -151,7 +147,7 @@ class NVIDIAClient:
         )
 
         try:
-            resp, used_model_id = await self._call_with_fallback(
+            resp, used_model_id = await self._call(
                 model=model,
                 system_message=_build_system_message(system),
                 messages=messages,
@@ -162,11 +158,22 @@ class NVIDIAClient:
         except Exception:
             # Refund the reservation on hard failure.
             await self.budget.reconcile(
-                estimated=cost_estimate, actual=0.0, family=model.family, run_id=run_id_str,
+                estimated=cost_estimate,
+                actual=0.0,
+                family=model.family,
+                run_id=run_id_str,
             )
             await self._record_call(
-                run_id=run_id_str, agent=agent, model=model.id,
-                in_tok=0, out_tok=0, cr=0, cw=0, cost=0.0, latency_ms=0, status="error",
+                run_id=run_id_str,
+                agent=agent,
+                model=model.id,
+                in_tok=0,
+                out_tok=0,
+                cr=0,
+                cw=0,
+                cost=0.0,
+                latency_ms=0,
+                status="error",
             )
             raise
 
@@ -179,7 +186,10 @@ class NVIDIAClient:
             cache_write_tokens=cw,
         )
         await self.budget.reconcile(
-            estimated=cost_estimate, actual=actual_cost, family=model.family, run_id=run_id_str,
+            estimated=cost_estimate,
+            actual=actual_cost,
+            family=model.family,
+            run_id=run_id_str,
         )
 
         text = _extract_text(resp.choices[0]) if resp.choices else ""
@@ -187,11 +197,22 @@ class NVIDIAClient:
         if json_mode:
             json_payload = _safe_parse_json(text)
 
-        latency_ms = int((time.perf_counter() - resp.__dict__.get("__t0__", 0)) * 1000) if "__t0__" in resp.__dict__ else 0
+        latency_ms = (
+            int((time.perf_counter() - resp.__dict__.get("__t0__", 0)) * 1000)
+            if "__t0__" in resp.__dict__
+            else 0
+        )
         await self._record_call(
-            run_id=run_id_str, agent=agent, model=used_model_id,
-            in_tok=in_tok, out_tok=out_tok, cr=cr, cw=cw,
-            cost=actual_cost, latency_ms=latency_ms, status="ok",
+            run_id=run_id_str,
+            agent=agent,
+            model=used_model_id,
+            in_tok=in_tok,
+            out_tok=out_tok,
+            cr=cr,
+            cw=cw,
+            cost=actual_cost,
+            latency_ms=latency_ms,
+            status="ok",
         )
 
         return LLMResponse(
@@ -209,7 +230,7 @@ class NVIDIAClient:
 
     # --- Internals ----------------------------------------------------------
 
-    async def _call_with_fallback(
+    async def _call(
         self,
         *,
         model: ModelSpec,
@@ -221,11 +242,11 @@ class NVIDIAClient:
     ) -> tuple[Any, str]:
         client = _get_nvidia_client()
         used_id = model.id
-        
+
         # Build OpenAI format messages with system message first
         openai_messages = [{"role": "system", "content": system_message}]
         openai_messages.extend(messages)
-        
+
         kwargs: dict[str, Any] = {
             "messages": openai_messages,
             "max_tokens": max_tokens,
@@ -291,26 +312,6 @@ class NVIDIAClient:
                 )
         except Exception as exc:
             log.warning("llm.telemetry.failed", error=str(exc))
-
-    @staticmethod
-    def _mocked_response(*, agent: str, tier: ModelTier, json_mode: bool) -> LLMResponse:
-        text = (
-            '{"_mock": true, "agent": "' + agent + '"}'
-            if json_mode
-            else f"[MOCK {agent}/{tier.value}] LLM_DISABLED=true; deterministic stub."
-        )
-        return LLMResponse(
-            text=text,
-            model=f"mock-{tier.value}",
-            input_tokens=0,
-            output_tokens=0,
-            cache_read_tokens=0,
-            cache_write_tokens=0,
-            cost_usd=0.0,
-            latency_ms=0,
-            raw={"mock": True},
-            json_payload={"_mock": True, "agent": agent} if json_mode else None,
-        )
 
 
 def _safe_parse_json(text: str) -> dict[str, Any] | None:

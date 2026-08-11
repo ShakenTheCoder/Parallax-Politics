@@ -2,6 +2,7 @@
 
 Append-only history. Each row is one snapshot of recommendations for a principal.
 """
+
 from __future__ import annotations
 
 from typing import Any

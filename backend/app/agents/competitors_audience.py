@@ -1,7 +1,9 @@
 """CompetitorsAudienceAgent — creates extraction instructions for rival monitoring."""
+
 from __future__ import annotations
 
 import json
+
 from app.agents._helpers import identity_brief
 from app.agents.base import AgentContext, BaseAgent
 from app.llm.client import get_llm_client
@@ -24,7 +26,9 @@ class CompetitorsAudienceAgent(BaseAgent):
         dcaa_res = ctx.get("DCAA")
         dcaa_brief = ""
         if dcaa_res:
-            dcaa_brief = f"\n\nDomain Context output:\n{json.dumps(dcaa_res.payload, ensure_ascii=False)}"
+            dcaa_brief = (
+                f"\n\nDomain Context output:\n{json.dumps(dcaa_res.payload, ensure_ascii=False)}"
+            )
 
         user = (
             f"Principal identity digest:\n{identity_brief(ctx, max_chars=1500)}{dcaa_brief}\n\n"
@@ -51,7 +55,10 @@ class CompetitorsAudienceAgent(BaseAgent):
             comparison_keywords=list(payload.get("comparison_keywords") or []),
             topics_of_contention=list(payload.get("topics_of_contention") or []),
             tracking_priorities=list(payload.get("tracking_priorities") or []),
-            instructions_summary=str(payload.get("instructions_summary") or "Extract competitor brand/faction activities."),
+            instructions_summary=str(
+                payload.get("instructions_summary")
+                or "Extract competitor brand/faction activities."
+            ),
         )
 
         return AgentResult(
