@@ -7,6 +7,7 @@ import {
   BriefSummary,
   BriefTopic,
   MyIdentityOut,
+  streamRunEvents,
   TopicStance,
 } from "@/lib/api";
 
@@ -618,14 +619,15 @@ export default function BriefPage() {
     (window as unknown as { setActiveTab: typeof setActiveTab }).setActiveTab = setActiveTab;
   }
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const eventsAbortRef = useRef<AbortController | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
   const closeSSE = useCallback(() => {
-    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    eventsAbortRef.current?.abort();
+    eventsAbortRef.current = null;
   }, []);
 
   // Run exactly once on mount. No dependency on `active` => no refetch loop.
@@ -668,51 +670,32 @@ export default function BriefPage() {
     try {
       const { run_id } = await api.generateBrief();
 
-      // Open SSE stream for live step events
-      const es = api.openRunEvents(run_id);
-      esRef.current = es;
-
-      es.addEventListener("step.started", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { step: StepKey; label?: string };
-        setSteps((prev) =>
-          prev.map((s) =>
-            s.key === data.step
-              ? { ...s, status: "running", label: data.label ?? s.label }
-              : s
-          )
-        );
-      });
-
-      es.addEventListener("step.completed", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { step: StepKey };
-        setSteps((prev) =>
-          prev.map((s) => (s.key === data.step ? { ...s, status: "completed" } : s))
-        );
-      });
-
-      es.addEventListener("run.failed", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { error?: string };
-        setGenStatus("failed");
-        setError(data.error ?? "Run failed");
-        closeSSE();
-        stopPolling();
-      });
-
-      es.addEventListener("run.budget_exhausted", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { error?: string };
-        setGenStatus("budget_exhausted");
-        setError(data.error ?? "Budget cap reached");
-        closeSSE();
-        stopPolling();
-      });
-
-      es.addEventListener("run.completed", () => {
-        setGenStatus("completed");
-        setSteps((prev) => prev.map((s) => ({ ...s, status: "completed" })));
-        closeSSE();
-      });
-
-      es.onerror = () => closeSSE();
+      // Fetch streaming keeps bearer credentials out of the URL.
+      const eventAbort = new AbortController();
+      eventsAbortRef.current = eventAbort;
+      void (async () => {
+        try {
+          for await (const event of streamRunEvents(run_id, eventAbort.signal)) {
+            const type = String(event.type ?? "");
+            if (type === "step.started") {
+              const step = event.step as StepKey;
+              setSteps((prev) => prev.map((item) => item.key === step ? { ...item, status: "running", label: typeof event.label === "string" ? event.label : item.label } : item));
+            } else if (type === "step.completed") {
+              const step = event.step as StepKey;
+              setSteps((prev) => prev.map((item) => item.key === step ? { ...item, status: "completed" } : item));
+            } else if (type === "run.failed" || type === "run.budget_exhausted") {
+              setGenStatus(type === "run.failed" ? "failed" : "budget_exhausted");
+              setError(typeof event.error === "string" ? event.error : type === "run.failed" ? "Run failed" : "Budget cap reached");
+              stopPolling();
+            } else if (type === "run.completed") {
+              setGenStatus("completed");
+              setSteps((prev) => prev.map((item) => ({ ...item, status: "completed" })));
+            }
+          }
+        } catch (error) {
+          if (!eventAbort.signal.aborted) setError(error instanceof Error ? error.message : "Run event stream failed");
+        }
+      })();
 
       // Poll for the brief row (persisted after run.completed)
       const baseline = briefs.length;

@@ -16,8 +16,14 @@ export const metadata: Metadata = {
   title: "Parallax Politics",
   description: "Professional political analysis and advisory services with clarity and certainty",
   icons: {
-    icon: "/Parallax-assets/Parallax politics/3.png",
+    icon: [
+      { url: "/Parallax-assets/Parallax politics/3.png", type: "image/png" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+    ],
+    shortcut: "/Parallax-assets/Parallax politics/3.png",
+    apple: "/Parallax-assets/Parallax politics/3.png",
   },
+  manifest: "/site.webmanifest",
 };
 
 export default function RootLayout({

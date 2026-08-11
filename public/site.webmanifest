@@ -1,0 +1,17 @@
+{
+  "name": "Parallax Politics",
+  "short_name": "Parallax",
+  "description": "Political intelligence and identity analysis platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/Parallax-assets/Parallax politics/3.png",
+      "sizes": "2000x2000",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

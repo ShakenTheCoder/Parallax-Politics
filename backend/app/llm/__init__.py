@@ -1,10 +1,10 @@
 """LLM client, model router, budget governance."""
 from app.llm.budget import BudgetExhaustedError, TokenBudgetManager
-from app.llm.client import LLMResponse, OpenRouterClient, get_llm_client
+from app.llm.client import LLMResponse, NVIDIAClient, get_llm_client
 from app.llm.router import ModelTier, pick_model
 
 __all__ = [
-    "OpenRouterClient",
+    "NVIDIAClient",
     "BudgetExhaustedError",
     "LLMResponse",
     "ModelTier",

@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const TOKEN_KEY = "parallax.token";
+const TOKEN_KEY = "parallax.session_token";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Auth-required routes
-  if (pathname === "/brief" || pathname.startsWith("/brief/")) {
+  // The backend remains the authorization authority; Proxy only rejects clearly
+  // unauthenticated navigation before client code renders protected pages.
+  const protectedRoute = ["/admin", "/identity", "/brief", "/audience", "/intelligence"].some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+  if (protectedRoute) {
     const token = request.cookies.get(TOKEN_KEY)?.value;
     if (!token) {
       return NextResponse.redirect(new URL("/login", request.url));
@@ -17,7 +21,7 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const proxyConfig = {
+export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

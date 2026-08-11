@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter
 from sqlalchemy import func, select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import AdminUser, DbSession
 from app.llm.budget import TokenBudgetManager
 from app.models.llm_call import LLMCall
 from app.redis import get_redis
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/usage")
-async def usage(db: DbSession, _user: CurrentUser) -> dict:
+async def usage(db: DbSession, _user: AdminUser) -> dict:
     """Token & cost rollups — last 24h, last 7d, plus live Redis budget snapshot."""
     budget = TokenBudgetManager(get_redis())
     snapshot = await budget.usage_snapshot()

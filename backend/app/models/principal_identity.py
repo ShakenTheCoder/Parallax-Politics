@@ -28,6 +28,7 @@ class PrincipalIdentity(Base, UUIDPK, Timestamps):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     built_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     pidaa_version: Mapped[str] = mapped_column(String(20), nullable=False, default="v1")
+    profile_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # 11 identity sections — all JSONB with provenance sub-keys
     basics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

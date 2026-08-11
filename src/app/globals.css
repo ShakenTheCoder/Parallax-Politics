@@ -22,11 +22,43 @@
   --foreground: #e6e6e6;
   --border: #e6e6e6;
   --muted: #1a1a1a;
-  --muted-foreground: #999999;
+  --muted-foreground: #ffffff;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+/* Keep utility copy readable against the monochrome surfaces. */
+.text-muted-foreground {
+  color: var(--foreground);
+}
+
+.text-xs {
+  font-size: 0.8125rem;
+}
+
+.text-sm {
+  font-size: 0.9375rem;
+}
+
+/* The interface uses rules and contrast for hierarchy, never text underlines. */
+a,
+a:hover,
+a:focus-visible {
+  text-decoration: none;
+}
+
+.candidate-source:hover {
+  text-decoration: underline;
+}
+
+.border-b,
+.border-b-2,
+.border-y {
+  border-bottom-width: 0;
 }

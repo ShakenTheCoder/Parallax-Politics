@@ -103,6 +103,7 @@ class GapResolution(BaseModel):
 class PrincipalIdentityArtifact(BaseModel):
     """Artifact shape emitted by PIDAA — mirrors principal_identities columns."""
     full_name: str
+    profile_image_url: str | None = None
     basics: dict[str, Any] = Field(default_factory=dict)
     family: dict[str, Any] = Field(default_factory=dict)
     education: dict[str, Any] = Field(default_factory=dict)

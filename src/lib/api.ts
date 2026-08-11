@@ -1,17 +1,14 @@
 // Lightweight API client for the Parallax Politics backend.
-// Configure base URL via NEXT_PUBLIC_API_BASE (defaults to localhost:8000).
+// All browser traffic passes through the same-origin Next.js backend-for-frontend.
+// The bearer token is held only in an HttpOnly cookie and never exposed to JS.
+export const API_BASE = "/api/backend";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+const SESSION_MARKER_KEY = "parallax.session";
 
-const TOKEN_KEY = "parallax.token";
-const SA_TOKEN_KEY = "parallax.superadmin.token";
-
-function setCookie(name: string, value: string, days = 7) {
-  if (typeof window === "undefined") return;
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires};path=/`;
+export function isAdminRole(role: string | null | undefined): boolean {
+  return role === "admin" || role === "superadmin";
 }
+
 function getCookie(name: string): string | null {
   if (typeof window === "undefined") return null;
   const m = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([$?*|{}\\^+[\]])/g, "\\$1") + "=([^;]*)"));
@@ -22,54 +19,45 @@ function clearCookie(name: string) {
   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
 }
 
-export function setToken(token: string) {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(TOKEN_KEY, token);
-    setCookie(TOKEN_KEY, token);
-  }
-}
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return getCookie(SESSION_MARKER_KEY);
 }
 export function clearToken() {
   if (typeof window !== "undefined") {
-    localStorage.removeItem(TOKEN_KEY);
-    clearCookie(TOKEN_KEY);
+    clearCookie(SESSION_MARKER_KEY);
   }
-}
-
-export function setSAToken(token: string) {
-  if (typeof window !== "undefined") localStorage.setItem(SA_TOKEN_KEY, token);
-}
-export function getSAToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(SA_TOKEN_KEY);
-}
-export function clearSAToken() {
-  if (typeof window !== "undefined") localStorage.removeItem(SA_TOKEN_KEY);
 }
 
 async function request<T>(
   path: string,
   init: RequestInit & { auth?: boolean; saAuth?: boolean } = {}
 ): Promise<T> {
-  const { auth = true, saAuth = false, headers, ...rest } = init;
+  const { headers } = init;
+  const rest = { ...init };
+  delete rest.headers;
+  delete rest.auth;
+  delete rest.saAuth;
   const h = new Headers(headers);
   h.set("Content-Type", "application/json");
-  if (saAuth) {
-    const tok = getSAToken();
-    if (tok) h.set("Authorization", `Bearer ${tok}`);
-  } else if (auth) {
-    const tok = getToken();
-    if (tok) h.set("Authorization", `Bearer ${tok}`);
-  }
-  const res = await fetch(`${API_BASE}${path}`, { ...rest, headers: h });
+  const backendPath = path.startsWith("/api/v1/") ? path.slice("/api/v1".length) : path;
+  const url = path.startsWith("/api/session/") ? path : `${API_BASE}${backendPath}`;
+  const res = await fetch(url, { ...rest, headers: h, credentials: "same-origin", cache: "no-store" });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    throw new ApiError(res.status, `${res.status} ${res.statusText}: ${text}`);
   }
-  return (await res.json()) as T;
+  if (res.status === 204) return undefined as T;
+
+  const body = await res.text();
+  return (body ? JSON.parse(body) : undefined) as T;
+}
+
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 // --- Types ------------------------------------------------------------------
@@ -79,7 +67,6 @@ export type UserOut = {
   username: string;
   display_name: string | null;
   role: string;
-  access_code: string | null;
   has_profile: boolean;
 };
 
@@ -143,6 +130,7 @@ export type DemographicBriefing = {
 
 export type PrincipalIdentityArtifact = {
   full_name: string;
+  profile_image_url: string | null;
   basics: Record<string, unknown>;
   family: Record<string, unknown>;
   education: Record<string, unknown>;
@@ -301,6 +289,7 @@ export type IdentityCandidate = {
 };
 
 export type PrincipalIdentitySection = {
+  profile_image_url: string | null;
   basics: Record<string, unknown>;
   family: Record<string, unknown>;
   education: Record<string, unknown>;
@@ -326,6 +315,8 @@ export type PrincipalSummary = {
   pidaa_status: string;
   built_at: string | null;
   username: string;
+  profile_image_url: string | null;
+  overview: string | null;
 };
 
 export type PrincipalDetail = PrincipalSummary & {
@@ -339,11 +330,192 @@ export type CreatePrincipalOut = {
   credentials: { username: string; password: string };
 };
 
+// --- Audience Center Types ---
+
+export type PersonalAudienceInstructions = {
+  target_name: string;
+  aliases: string[];
+  focus_keywords: string[];
+  priority_topics: string[];
+  extraction_fields: string[];
+  instructions_summary: string;
+};
+
+export type CompetitorsAudienceInstructions = {
+  primary_competitors: string[];
+  competitor_keywords: string[];
+  topics_of_contention: string[];
+  tracking_priorities: string[];
+  instructions_summary: string;
+};
+
+export type ContextualAudienceInstructions = {
+  target_regions: string[];
+  demographic_segments: string[];
+  salient_issues: string[];
+  instructions_summary: string;
+};
+
+export type FacebookAnalysisCategoryResult = {
+  category_name: string;
+  sentiment_distribution: Record<string, number>;
+  top_themes: string[];
+  engagement_metrics: Record<string, number>;
+  key_findings: string[];
+};
+
+export type FacebookAnalysisResult = {
+  categories: FacebookAnalysisCategoryResult[];
+  overall_landscape_summary: string;
+  actionable_recommendations: string[];
+};
+
+export type AudienceInstructionsSummary = {
+  personal: PersonalAudienceInstructions | null;
+  competitors: CompetitorsAudienceInstructions | null;
+  contextual: ContextualAudienceInstructions | null;
+  facebook_analysis: FacebookAnalysisResult | null;
+  last_updated_at: string | null;
+};
+
+// --- Intelligence control plane ---
+
+export type IntelligenceSignal = {
+  id: string;
+  subject_id: string | null;
+  platform: string;
+  event_type: string;
+  language: string;
+  title: string | null;
+  content_excerpt: string;
+  url: string;
+  published_at: string | null;
+  observed_at: string;
+  engagement: Record<string, number>;
+  provenance: Record<string, unknown>;
+};
+
+export type PresenceMetric = {
+  subject_id: string;
+  full_name: string;
+  signal_count: number;
+  engagement_total: number;
+  share_of_voice_pct: number;
+  latest_signal_at: string | null;
+};
+
+export type IntelligenceOverview = {
+  generated_at: string;
+  freshness_minutes: number | null;
+  monitored_candidates: number;
+  signals_24h: number;
+  sources_active: number;
+  scenarios_pending_review: number;
+  presence: PresenceMetric[];
+  recent_signals: IntelligenceSignal[];
+  data_notice: string;
+};
+
+export type IntelligenceScenario = {
+  id: string;
+  subject_id: string;
+  title: string;
+  narrative: string;
+  proposed_action: string;
+  cohort: Record<string, unknown>;
+  effective_at: string;
+  status: string;
+  forecast: {
+    direction?: string;
+    lower_pct?: number;
+    central_pct?: number;
+    upper_pct?: number;
+    confidence?: number;
+    signal_count?: number;
+    representative_calibration?: boolean;
+    valid_until?: string;
+  };
+  assumptions: string[];
+  evidence: { url?: string; title?: string | null; observed_at?: string }[];
+  model_version: string;
+  created_at: string;
+};
+
+export type StrategyVerdict = {
+  id: string;
+  scenario_id: string;
+  status: string;
+  recommendation: string;
+  rationale: string;
+  confidence: number;
+  risk_level: string;
+  critic: Record<string, unknown>;
+  evidence: { url?: string; title?: string | null }[];
+  expires_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+};
+
+export type AgentDefinition = {
+  id: string;
+  name: string;
+  role: string;
+  stage: string;
+  verdict_authority: boolean;
+};
+
+export type AgentFleet = {
+  agents: AgentDefinition[];
+  invariant: string;
+};
+
+export type CollectionSource = {
+  id: string;
+  name: string;
+  base_url: string;
+  authority: string;
+  connector_kind: string;
+  status: string;
+  schedule_minutes: number;
+  robots_observed: boolean;
+  allowed_paths: string[];
+  last_collected_at: string | null;
+};
+
+export type CollectionSubscription = {
+  id: string;
+  collection_source_id: string;
+  subject_id: string;
+  path: string;
+  language: string;
+  event_type: string;
+  status: string;
+  next_due_at: string;
+  last_collected_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+};
+
+export type ScenarioCreateInput = {
+  subject_id?: string;
+  title: string;
+  narrative: string;
+  proposed_action: string;
+  cohort: {
+    label: string;
+    sample_size: number;
+    regions: string[];
+    age_band?: string;
+    evidence_basis: string;
+  };
+};
+
 // --- Endpoints --------------------------------------------------------------
 
 export const api = {
   async login(username: string, password: string): Promise<LoginResponse> {
-    return request<LoginResponse>("/api/v1/auth/login", {
+    return request<LoginResponse>("/api/session/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
       auth: false,
@@ -373,48 +545,118 @@ export const api = {
     return request<MyIdentityOut>("/api/v1/briefs/me/identity");
   },
 
-  openRunEvents(runId: string): EventSource {
-    const token = getToken() ?? "";
-    const url = `${API_BASE}/api/v1/runs/${runId}/events?token=${encodeURIComponent(token)}`;
-    return new EventSource(url);
+  // --- Audience Center ---
+  async analyzeAudience(): Promise<BriefGenerateOut> {
+    return request<BriefGenerateOut>("/api/v1/audience/analyze", { method: "POST" });
+  },
+  async getAudienceInstructions(): Promise<AudienceInstructionsSummary> {
+    return request<AudienceInstructionsSummary>("/api/v1/audience/instructions");
   },
 
-  // --- Superadmin ---
-  async verifySuperadmin(code: string): Promise<{ token: string }> {
-    return request<{ token: string }>("/api/v1/superadmin/verify", {
+  // --- Intelligence ---
+  async getIntelligenceOverview(): Promise<IntelligenceOverview> {
+    return request<IntelligenceOverview>("/api/v1/intelligence/overview");
+  },
+  async getAgentFleet(): Promise<AgentFleet> {
+    return request<AgentFleet>("/api/v1/intelligence/agents");
+  },
+  async listScenarios(): Promise<IntelligenceScenario[]> {
+    return request<IntelligenceScenario[]>("/api/v1/intelligence/scenarios");
+  },
+  async createScenario(payload: ScenarioCreateInput): Promise<{ scenario: IntelligenceScenario; verdict: StrategyVerdict }> {
+    return request<{ scenario: IntelligenceScenario; verdict: StrategyVerdict }>("/api/v1/intelligence/scenarios", {
       method: "POST",
-      body: JSON.stringify({ code }),
-      auth: false,
+      body: JSON.stringify(payload),
     });
   },
+  async listVerdicts(): Promise<StrategyVerdict[]> {
+    return request<StrategyVerdict[]>("/api/v1/intelligence/verdicts");
+  },
+  async reviewVerdict(id: string, decision: "approved" | "rejected", review_note: string): Promise<StrategyVerdict> {
+    return request<StrategyVerdict>(`/api/v1/intelligence/verdicts/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ decision, review_note }),
+      saAuth: true,
+    });
+  },
+  async listCollectionSources(): Promise<CollectionSource[]> {
+    return request<CollectionSource[]>("/api/v1/intelligence/sources", { saAuth: true });
+  },
+  async createCollectionSource(payload: {
+    name: string;
+    base_url: string;
+    authority: "official_api" | "licensed_feed" | "public_web" | "representative_poll" | "consented_panel";
+    connector_kind: "scrapling" | "official_api" | "licensed_feed";
+    schedule_minutes: number;
+    robots_observed: boolean;
+    allowed_paths: string[];
+  }): Promise<CollectionSource> {
+    return request<CollectionSource>("/api/v1/intelligence/sources", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      saAuth: true,
+    });
+  },
+  async collectSource(sourceId: string, payload: {
+    subject_id?: string;
+    path: string;
+    language: "und" | "en" | "fil";
+    event_type: string;
+  }): Promise<{ created: boolean; signal: IntelligenceSignal }> {
+    return request<{ created: boolean; signal: IntelligenceSignal }>(`/api/v1/intelligence/sources/${encodeURIComponent(sourceId)}/collect`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      saAuth: true,
+    });
+  },
+  async listCollectionSubscriptions(): Promise<CollectionSubscription[]> {
+    return request<CollectionSubscription[]>("/api/v1/intelligence/subscriptions", { saAuth: true });
+  },
+  async createCollectionSubscription(sourceId: string, payload: {
+    subject_id: string;
+    path: string;
+    language: "und" | "en" | "fil";
+    event_type: string;
+  }): Promise<CollectionSubscription> {
+    return request<CollectionSubscription>(
+      `/api/v1/intelligence/sources/${encodeURIComponent(sourceId)}/subscriptions`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+        saAuth: true,
+      },
+    );
+  },
+
+  // --- Admin console ---
   async disambiguatePrincipal(name_query: string, hint?: string): Promise<IdentityCandidate> {
-    return request<IdentityCandidate>("/api/v1/superadmin/disambiguate", {
+    return request<IdentityCandidate>("/api/v1/admin/disambiguate", {
       method: "POST",
       body: JSON.stringify({ name_query, hint: hint || null }),
       saAuth: true,
     });
   },
   async createPrincipal(name_query: string, candidate: IdentityCandidate): Promise<CreatePrincipalOut> {
-    return request<CreatePrincipalOut>("/api/v1/superadmin/principals", {
+    return request<CreatePrincipalOut>("/api/v1/admin/principals", {
       method: "POST",
       body: JSON.stringify({ name_query, candidate }),
       saAuth: true,
     });
   },
   async listPrincipals(): Promise<PrincipalSummary[]> {
-    return request<PrincipalSummary[]>("/api/v1/superadmin/principals", { saAuth: true });
+    return request<PrincipalSummary[]>("/api/v1/admin/principals", { saAuth: true });
   },
   async getPrincipalDetail(profileId: string): Promise<PrincipalDetail> {
-    return request<PrincipalDetail>(`/api/v1/superadmin/principals/${profileId}`, { saAuth: true });
+    return request<PrincipalDetail>(`/api/v1/admin/principals/${profileId}`, { saAuth: true });
   },
   async rerunPidaa(profileId: string): Promise<{ run_id: string; status: string }> {
-    return request<{ run_id: string; status: string }>(`/api/v1/superadmin/principals/${profileId}/rerun`, {
+    return request<{ run_id: string; status: string }>(`/api/v1/admin/principals/${profileId}/rerun`, {
       method: "POST",
       saAuth: true,
     });
   },
   async archivePrincipal(profileId: string): Promise<void> {
-    return request<void>(`/api/v1/superadmin/principals/${profileId}`, {
+    return request<void>(`/api/v1/admin/principals/${profileId}`, {
       method: "DELETE",
       saAuth: true,
     });
@@ -431,9 +673,9 @@ export async function* streamRunEvents(
   runId: string,
   signal?: AbortSignal
 ): AsyncGenerator<{ type: string; [k: string]: unknown }> {
-  const tok = getToken();
-  const res = await fetch(`${API_BASE}/api/v1/runs/${runId}/events`, {
-    headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+  const res = await fetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/events`, {
+    credentials: "same-origin",
+    cache: "no-store",
     signal,
   });
   if (!res.body) return;

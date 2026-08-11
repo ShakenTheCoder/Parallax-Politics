@@ -7,8 +7,8 @@ import { useRouter } from "next/navigation";
 type SessionContextType = {
   user: UserOut | null;
   loading: boolean;
-  loginSession: (token: string, user: UserOut) => void;
-  logoutSession: () => void;
+  loginSession: (user: UserOut) => void;
+  logoutSession: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
 
@@ -31,7 +31,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (savedUser) {
         try {
           setUser(JSON.parse(savedUser));
-        } catch (e) {
+        } catch {
           sessionStorage.removeItem(USER_KEY);
         }
       }
@@ -41,7 +41,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           const fetchedUser = await api.getMe();
           sessionStorage.setItem(USER_KEY, JSON.stringify(fetchedUser));
           setUser(fetchedUser);
-        } catch (err) {
+        } catch {
           clearToken();
           sessionStorage.removeItem(USER_KEY);
           setUser(null);
@@ -56,16 +56,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     initSession();
   }, []);
 
-  const loginSession = (token: string, user: UserOut) => {
+  const loginSession = (user: UserOut) => {
     sessionStorage.setItem(USER_KEY, JSON.stringify(user));
     setUser(user);
   };
 
-  const logoutSession = () => {
-    clearToken();
-    sessionStorage.removeItem(USER_KEY);
-    setUser(null);
-    router.push("/");
+  const logoutSession = async () => {
+    try {
+      await fetch("/api/session/logout", { method: "POST", credentials: "same-origin" });
+    } finally {
+      clearToken();
+      sessionStorage.removeItem(USER_KEY);
+      setUser(null);
+      router.push("/");
+    }
   };
 
   const refreshUser = async () => {
@@ -73,7 +77,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const fetchedUser = await api.getMe();
       sessionStorage.setItem(USER_KEY, JSON.stringify(fetchedUser));
       setUser(fetchedUser);
-    } catch (err) {
+    } catch {
       // ignore or handle
     }
   };

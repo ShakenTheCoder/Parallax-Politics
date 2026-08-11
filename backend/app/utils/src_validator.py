@@ -67,7 +67,7 @@ class URLValidationResult:
     trusted_domain: bool = False
 
     # Class-level cache for known-good domains (fast path)
-    _domain_cache: ClassVar[dict[str, bool]] = field(default_factory=dict, repr=False)
+    _domain_cache: ClassVar[dict[str, bool]] = {}
 
 
 @retry(

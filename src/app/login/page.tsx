@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, setToken } from "@/lib/api";
+import { api, isAdminRole } from "@/lib/api";
 import { useSession } from "@/lib/SessionContext";
+import RotatingEarth from "@/components/ui/wireframe-dotted-globe";
 
 export default function Login() {
   const router = useRouter();
@@ -20,34 +21,41 @@ export default function Login() {
 
     try {
       const data = await api.login(username, password);
-      setToken(data.access_token);
-      loginSession(data.access_token, data.user);
-      router.push("/brief");
+      loginSession(data.user);
+      router.replace(isAdminRole(data.user.role) ? "/admin" : "/brief");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Login failed";
-      setError(msg.includes("401") ? "Invalid username or password" : "Failed to connect");
+      setError(msg.includes("401") ? "Credential verification failed" : "Secure authentication service unavailable");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-8">
+    <div className="relative isolate min-h-screen overflow-hidden bg-background text-foreground flex flex-col items-center justify-center px-4">
+      <div className="pointer-events-none absolute inset-0 flex -translate-y-10 items-center justify-center opacity-25">
+        <RotatingEarth width={760} height={600} className="w-full max-w-3xl" />
+      </div>
+      <div className="relative z-10 -translate-y-10 w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Log In</h1>
-          <p className="text-muted-foreground">Welcome back to Parallax Politics</p>
+          <h1 className="text-3xl font-bold tracking-tight">Political Analysis Access</h1>
+          <p className="text-muted-foreground">Authorized personnel only · Parallax Politics</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-xs space-y-6" autoComplete="on">
           <div className="space-y-4">
             <div>
               <input
                 type="text"
+                name="username"
                 placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="mx-auto block w-full max-w-xs px-4 py-2.5 border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
                 required
                 disabled={loading}
               />
@@ -55,10 +63,12 @@ export default function Login() {
             <div>
               <input
                 type="password"
+                name="password"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
+                autoComplete="current-password"
+                className="mx-auto block w-full max-w-xs px-4 py-2.5 border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
                 required
                 disabled={loading}
               />
@@ -71,10 +81,10 @@ export default function Login() {
           )}
           <button
             type="submit"
-            className="w-full px-4 py-3 bg-foreground text-background font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="mx-auto block w-full max-w-[180px] px-4 py-2.5 bg-foreground text-background font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
             disabled={loading}
           >
-            {loading ? "Entering..." : "Enter"}
+            {loading ? "Authenticating..." : "Authenticate"}
           </button>
         </form>
       </div>

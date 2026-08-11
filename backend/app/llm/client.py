@@ -1,4 +1,4 @@
-"""OpenRouter client wrapper.
+"""NVIDIA NIM client wrapper.
 
 Responsibilities:
 - single async client (process-wide).
@@ -57,15 +57,15 @@ class LLMResponse:
 _client: AsyncOpenAI | None = None
 
 
-def _get_openrouter() -> AsyncOpenAI:
+def _get_nvidia_client() -> AsyncOpenAI:
     global _client
     if _client is None:
         s = get_settings()
-        if not s.openrouter_api_key:
-            raise RuntimeError("OPENROUTER_API_KEY is not set")
+        if not s.nvidia_api_key:
+            raise RuntimeError("NVIDIA_API_KEY is not set")
         _client = AsyncOpenAI(
-            api_key=s.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1"
+            api_key=s.nvidia_api_key,
+            base_url=s.nvidia_base_url,
         )
     return _client
 
@@ -74,7 +74,7 @@ def _build_system_message(
     system_prompt: str | list[dict[str, Any]],
 ) -> str:
     """Convert a string or pre-formed blocks into a system message string.
-    OpenRouter uses standard OpenAI format with system as a string.
+    NVIDIA NIM uses the standard OpenAI message format with system as a string.
     """
     if isinstance(system_prompt, str):
         return system_prompt
@@ -92,8 +92,8 @@ def _extract_usage(resp_usage: Any) -> tuple[int, int, int, int]:
     """Pull (input, output, cache_read, cache_write) from an OpenAI Usage."""
     in_tok = getattr(resp_usage, "prompt_tokens", 0) or 0
     out_tok = getattr(resp_usage, "completion_tokens", 0) or 0
-    cr = 0  # OpenRouter free tier doesn't have cache billing
-    cw = 0  # OpenRouter free tier doesn't have cache billing
+    cr = 0  # NVIDIA free endpoint doesn't have cache billing
+    cw = 0  # NVIDIA free endpoint doesn't have cache billing
     return in_tok, out_tok, cr, cw
 
 
@@ -104,7 +104,7 @@ def _extract_text(resp_choice: Any) -> str:
     return ""
 
 
-class OpenRouterClient:
+class NVIDIAClient:
     """High-level wrapper. Inject `agent` + optional `run_id` for traceability."""
 
     def __init__(self) -> None:
@@ -219,7 +219,7 @@ class OpenRouterClient:
         temperature: float,
         stop_sequences: list[str] | None,
     ) -> tuple[Any, str]:
-        client = _get_openrouter()
+        client = _get_nvidia_client()
         used_id = model.id
         
         # Build OpenAI format messages with system message first
@@ -251,7 +251,7 @@ class OpenRouterClient:
                 with attempt:
                     return await _call(used_id), used_id
         except Exception as e:
-            # For OpenRouter, we don't have model fallback in the same way
+            # NVIDIA's hosted endpoint does not expose model fallback here
             # Just log and re-raise
             log.warning("llm.call_failed", model=used_id, err=str(e))
             raise
@@ -343,11 +343,11 @@ def _safe_parse_json(text: str) -> dict[str, Any] | None:
         return None
 
 
-_singleton: OpenRouterClient | None = None
+_singleton: NVIDIAClient | None = None
 
 
-def get_llm_client() -> OpenRouterClient:
+def get_llm_client() -> NVIDIAClient:
     global _singleton
     if _singleton is None:
-        _singleton = OpenRouterClient()
+        _singleton = NVIDIAClient()
     return _singleton

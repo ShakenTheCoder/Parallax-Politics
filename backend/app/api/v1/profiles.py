@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import AdminUser, DbSession
 from app.models.profile import Profile
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
 
 @router.get("/{slug}")
-async def get_profile(slug: str, db: DbSession, _user: CurrentUser) -> dict:
+async def get_profile(slug: str, db: DbSession, _user: AdminUser) -> dict:
     res = await db.execute(select(Profile).where(Profile.slug == slug))
     profile = res.scalar_one_or_none()
     if not profile:
@@ -31,7 +31,7 @@ async def get_profile(slug: str, db: DbSession, _user: CurrentUser) -> dict:
 
 
 @router.get("")
-async def list_profiles(db: DbSession, _user: CurrentUser) -> list[dict]:
+async def list_profiles(db: DbSession, _user: AdminUser) -> list[dict]:
     res = await db.execute(select(Profile).order_by(Profile.created_at.desc()))
     return [
         {

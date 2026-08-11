@@ -1,0 +1,221 @@
+"""Strict public contracts for intelligence collection and review."""
+from __future__ import annotations
+
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
+from uuid import UUID
+
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourceAuthority(StrEnum):
+    official_api = "official_api"
+    licensed_feed = "licensed_feed"
+    public_web = "public_web"
+    representative_poll = "representative_poll"
+    consented_panel = "consented_panel"
+
+
+class CollectionSourceCreate(StrictModel):
+    name: str = Field(min_length=2, max_length=160)
+    base_url: AnyHttpUrl
+    authority: SourceAuthority
+    connector_kind: str = Field(default="scrapling", pattern=r"^(scrapling|official_api|licensed_feed)$")
+    schedule_minutes: int = Field(default=15, ge=15, le=1440)
+    robots_observed: bool = True
+    allowed_paths: list[str] = Field(default_factory=list, max_length=30)
+
+    @field_validator("allowed_paths")
+    @classmethod
+    def validate_paths(cls, paths: list[str]) -> list[str]:
+        for path in paths:
+            if not path.startswith("/") or ".." in path or len(path) > 240:
+                raise ValueError("allowed paths must be bounded absolute URL paths")
+        return paths
+
+    @model_validator(mode="after")
+    def validate_connector_authority(self) -> CollectionSourceCreate:
+        expected = {
+            SourceAuthority.public_web: "scrapling",
+            SourceAuthority.official_api: "official_api",
+            SourceAuthority.licensed_feed: "licensed_feed",
+            SourceAuthority.representative_poll: "licensed_feed",
+            SourceAuthority.consented_panel: "licensed_feed",
+        }[self.authority]
+        if self.connector_kind != expected:
+            raise ValueError(f"{self.authority.value} sources require the {expected} connector")
+        if self.connector_kind == "scrapling" and not self.robots_observed:
+            raise ValueError("public web collection must observe robots policy")
+        return self
+
+
+class CollectionSourceOut(BaseModel):
+    id: UUID
+    name: str
+    base_url: str
+    authority: str
+    connector_kind: str
+    status: str
+    schedule_minutes: int
+    robots_observed: bool
+    allowed_paths: list[str]
+    last_collected_at: datetime | None
+
+
+class CollectionRequest(StrictModel):
+    subject_id: UUID | None = None
+    path: str = Field(default="/", min_length=1, max_length=500)
+    css_selector: str | None = Field(default=None, min_length=1, max_length=240)
+    language: str = Field(default="und", pattern=r"^(und|en|fil)$")
+    event_type: str = Field(default="public_document", min_length=2, max_length=60)
+
+    @field_validator("path")
+    @classmethod
+    def safe_path(cls, path: str) -> str:
+        if not path.startswith("/") or path.startswith("//") or ".." in path:
+            raise ValueError("path must be a same-origin absolute path")
+        return path
+
+
+class CollectionSubscriptionCreate(CollectionRequest):
+    subject_id: UUID
+
+
+class CollectionSubscriptionOut(BaseModel):
+    id: UUID
+    collection_source_id: UUID
+    subject_id: UUID
+    path: str
+    language: str
+    event_type: str
+    status: str
+    next_due_at: datetime
+    last_collected_at: datetime | None
+    last_error: str | None
+    consecutive_failures: int
+
+
+class SignalOut(BaseModel):
+    id: UUID
+    subject_id: UUID | None
+    platform: str
+    event_type: str
+    language: str
+    title: str | None
+    content_excerpt: str
+    url: str
+    published_at: datetime | None
+    observed_at: datetime
+    engagement: dict[str, Any]
+    provenance: dict[str, Any]
+
+
+class CollectionResult(BaseModel):
+    created: bool
+    signal: SignalOut
+
+
+class CohortSpec(StrictModel):
+    label: str = Field(min_length=2, max_length=160)
+    sample_size: int = Field(ge=100, le=10_000_000)
+    regions: list[str] = Field(default_factory=lambda: ["Philippines"], min_length=1, max_length=20)
+    age_band: str | None = Field(default=None, max_length=40)
+    evidence_basis: str = Field(min_length=3, max_length=240)
+
+
+class ScenarioCreate(StrictModel):
+    subject_id: UUID | None = None
+    title: str = Field(min_length=3, max_length=200)
+    narrative: str = Field(min_length=20, max_length=4000)
+    proposed_action: str = Field(min_length=20, max_length=4000)
+    cohort: CohortSpec
+    effective_at: datetime | None = None
+
+
+class ForecastRange(BaseModel):
+    direction: str = Field(pattern=r"^(positive|negative|mixed|insufficient_evidence)$")
+    lower_pct: float = Field(ge=-100, le=100)
+    central_pct: float = Field(ge=-100, le=100)
+    upper_pct: float = Field(ge=-100, le=100)
+    confidence: float = Field(ge=0, le=1)
+
+
+class ScenarioOut(BaseModel):
+    id: UUID
+    subject_id: UUID
+    title: str
+    narrative: str
+    proposed_action: str
+    cohort: dict[str, Any]
+    effective_at: datetime
+    status: str
+    forecast: dict[str, Any]
+    assumptions: list[str]
+    evidence: list[dict[str, Any]]
+    model_version: str
+    created_at: datetime
+
+
+class VerdictOut(BaseModel):
+    id: UUID
+    scenario_id: UUID
+    status: str
+    recommendation: str
+    rationale: str
+    confidence: float
+    risk_level: str
+    critic: dict[str, Any]
+    evidence: list[dict[str, Any]]
+    expires_at: datetime
+    approved_by: UUID | None
+    approved_at: datetime | None
+    created_at: datetime
+
+
+class ScenarioCreateResult(BaseModel):
+    scenario: ScenarioOut
+    verdict: VerdictOut
+
+
+class VerdictDecision(StrictModel):
+    decision: str = Field(pattern=r"^(approved|rejected)$")
+    review_note: str = Field(min_length=3, max_length=1000)
+
+
+class PresenceMetric(BaseModel):
+    subject_id: UUID
+    full_name: str
+    signal_count: int
+    engagement_total: int
+    share_of_voice_pct: float
+    latest_signal_at: datetime | None
+
+
+class IntelligenceOverview(BaseModel):
+    generated_at: datetime
+    freshness_minutes: int | None
+    monitored_candidates: int
+    signals_24h: int
+    sources_active: int
+    scenarios_pending_review: int
+    presence: list[PresenceMetric]
+    recent_signals: list[SignalOut]
+    data_notice: str
+
+
+class AgentDefinition(BaseModel):
+    id: str
+    name: str
+    role: str
+    stage: str
+    verdict_authority: bool = False
+
+
+class AgentFleetOut(BaseModel):
+    agents: list[AgentDefinition]
+    invariant: str

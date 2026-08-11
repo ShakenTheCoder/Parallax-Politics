@@ -1,8 +1,7 @@
 """Model router and pricing.
 
 Centralized so model IDs and prices can be bumped without touching agents.
-Prices are USD per 1M tokens — configured for OpenRouter Google Gemma model.
-Source: OpenRouter pricing for google/gemma-4-31b-it:free (free tier).
+Prices are USD per 1M tokens — configured for NVIDIA NIM free endpoints.
 """
 from __future__ import annotations
 
@@ -30,19 +29,20 @@ class ModelSpec:
 
 
 # --- Registered models -------------------------------------------------------
-# Google Gemma model through OpenRouter (free tier)
+# NVIDIA NIM free endpoint. This model is listed as available on NVIDIA's
+# build.nvidia.com model page and uses the OpenAI-compatible NIM API.
 
 GEMMA_4_31B = ModelSpec(
-    id="google/gemma-4-31b-it:free",
+    id="meta/llama-3.3-70b-instruct",
     tier=ModelTier.default,
     input_per_mtok=0.0,  # Free tier
     output_per_mtok=0.0,  # Free tier
     cache_write_per_mtok=0.0,  # Not applicable for free tier
     cache_read_per_mtok=0.0,   # Not applicable for free tier
-    family="gemma",
+    family="llama",
 )
 
-# Use Gemma for all tiers since it's the only configured model
+# Use this verified NVIDIA free endpoint for all tiers.
 _REGISTRY: dict[ModelTier, ModelSpec] = {
     ModelTier.cheap: GEMMA_4_31B,
     ModelTier.default: GEMMA_4_31B,
@@ -68,7 +68,7 @@ def estimate_cost_usd(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
 ) -> float:
-    # OpenRouter billing for free tier: all costs are $0
+    # NVIDIA free endpoint: all costs are $0
     # Cache operations are not applicable for the free tier
     return round(
         (input_tokens / 1_000_000) * model.input_per_mtok
