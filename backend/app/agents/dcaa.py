@@ -33,7 +33,7 @@ class DCAA(BaseAgent):
             system=system,
             messages=[{"role": "user", "content": user}],
             tier=self.default_tier,
-            max_tokens=2500,
+            max_tokens=1000,
             run_id=ctx.run_id,
             json_mode=True,
             temperature=0.3,

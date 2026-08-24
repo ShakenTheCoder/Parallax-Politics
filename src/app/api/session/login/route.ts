@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ access_token: "", token_type: "bearer", user: payload.user });
   const role = (payload.user as Record<string, unknown>).role;
-  const maxAge = role === "admin" || role === "superadmin" ? 15 * 60 : 60 * 60;
+  const maxAge = role === "superadmin" ? 15 * 60 : 60 * 60;
   response.cookies.set(SESSION_COOKIE, payload.access_token, sessionCookieOptions(maxAge));
   response.cookies.set(SESSION_MARKER_COOKIE, "active", {
     secure: process.env.NODE_ENV === "production",

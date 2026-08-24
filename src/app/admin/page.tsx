@@ -11,6 +11,7 @@ import {
   PrincipalDetail,
   PrincipalSummary,
   CreatePrincipalOut,
+  AdminUser,
 } from "@/lib/api";
 
 // --- small helpers -----------------------------------------------------------
@@ -24,7 +25,7 @@ function StatusBadge({ status }: { status: string }) {
   }[status] ?? "text-muted-foreground border-border";
   return (
     <span className={`text-[10px] font-semibold uppercase tracking-widest border px-2 py-1 ${color}`}>
-      {status === "building" ? <ScrambleLoader target="ANALYZING" label="PIDAA is analyzing identity" className="text-[10px]" /> : status}
+      {status === "building" ? <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2 w-2 animate-spin rounded-full border border-current border-t-transparent" /> PIDAA loading</span> : status}
     </span>
   );
 }
@@ -238,7 +239,9 @@ function CandidateCard({
 export default function AdminConsole() {
   const router = useRouter();
   const [identities, setIdentities] = useState<PrincipalSummary[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(true);
   const [registryError, setRegistryError] = useState("");
 
   // Create flow
@@ -248,6 +251,10 @@ export default function AdminConsole() {
   const [confirming, setConfirming] = useState(false);
   const [newCreds, setNewCreds] = useState<CreatePrincipalOut["credentials"] | null>(null);
   const [createError, setCreateError] = useState("");
+  const [userForm, setUserForm] = useState({ username: "", password: "", display_name: "", role: "principal" as AdminUser["role"] });
+  const [showUserPassword, setShowUserPassword] = useState(false);
+  const [userError, setUserError] = useState("");
+  const [creatingUser, setCreatingUser] = useState(false);
 
   const guardAdmin = useCallback(() => {
     if (!getToken()) router.replace("/login");
@@ -269,13 +276,24 @@ export default function AdminConsole() {
     }
   }, [router]);
 
+  const loadUsers = useCallback(async () => {
+    try {
+      setUsers(await api.listUsers());
+    } catch (err) {
+      setUserError(err instanceof Error ? err.message : "Could not load users");
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [router]);
+
   useEffect(() => {
     const task = window.setTimeout(() => {
       guardAdmin();
       void loadPrincipals();
+      void loadUsers();
     }, 0);
     return () => window.clearTimeout(task);
-  }, [guardAdmin, loadPrincipals]);
+  }, [guardAdmin, loadPrincipals, loadUsers]);
 
   const handleSearch = async (e: React.FormEvent, hint?: string) => {
     e?.preventDefault();
@@ -333,11 +351,90 @@ export default function AdminConsole() {
     router.push(`/identity?profileId=${encodeURIComponent(profileId)}`);
   };
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingUser(true);
+    setUserError("");
+    try {
+      await api.createUser({
+        username: userForm.username,
+        password: userForm.password,
+        display_name: userForm.display_name || undefined,
+        role: userForm.role,
+      });
+      setUserForm({ username: "", password: "", display_name: "", role: "principal" });
+      await loadUsers();
+    } catch (err) {
+      setUserError(err instanceof Error ? err.message : "Could not create user");
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (!confirm(`Remove ${user.display_name || user.username}? This cannot be undone.`)) return;
+    try {
+      await api.deleteUser(user.id);
+      await Promise.all([loadUsers(), loadPrincipals()]);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not remove user");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {newCreds && <CredentialsModal creds={newCreds} onDismiss={() => setNewCreds(null)} />}
 
       <div className="max-w-6xl mx-auto px-3 py-6 sm:px-5 sm:py-10 space-y-8 sm:space-y-12">
+
+        {/* User management */}
+        <section className="space-y-5">
+          <div>
+            <h2 className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">User Management</h2>
+            <p className="mt-2 text-xs text-muted-foreground">Create and remove login accounts. Passwords are stored only as hashes.</p>
+          </div>
+
+          <form onSubmit={handleCreateUser} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <input required minLength={1} maxLength={120} placeholder="Username" value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} className="min-h-11 border border-border bg-background px-3 text-sm" />
+            <div className="relative">
+              <input required minLength={6} maxLength={200} type={showUserPassword ? "text" : "password"} placeholder="Password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} className="min-h-11 w-full border border-border bg-background px-3 pr-11 text-sm" />
+              <button type="button" onClick={() => setShowUserPassword((visible) => !visible)} aria-label={showUserPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                {showUserPassword ? (
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.3A10.8 10.8 0 0112 4c5.2 0 8.7 4 9.8 6a11.8 11.8 0 01-3.2 3.8M6.2 6.2C3.9 7.7 2.6 9.6 2.2 10c1.1 2 4.6 6 9.8 6 1 0 1.9-.2 2.8-.5" /></svg>
+                ) : (
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.2 12s3.5-6 9.8-6 9.8 6 9.8 6-3.5 6-9.8 6-9.8-6-9.8-6z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                )}
+              </button>
+            </div>
+            <input maxLength={200} placeholder="Display name (optional)" value={userForm.display_name} onChange={(e) => setUserForm({ ...userForm, display_name: e.target.value })} className="min-h-11 border border-border bg-background px-3 text-sm" />
+            <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as AdminUser["role"] })} className="min-h-11 border border-border bg-background px-3 text-sm">
+              <option value="principal">Principal</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+            <button disabled={creatingUser} className="min-h-11 border border-foreground bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50">{creatingUser ? "Creating…" : "Add user"}</button>
+          </form>
+
+          {userError && <p className="text-sm text-red-700 dark:text-red-400">{userError}</p>}
+          {loadingUsers ? <p className="text-sm text-muted-foreground">Loading users…</p> : (
+            <div className="overflow-x-auto border border-border">
+              <table className="w-full min-w-[620px] text-left text-sm">
+                <thead className="border-b border-border text-xs uppercase tracking-widest text-muted-foreground">
+                  <tr><th className="px-3 py-3">User</th><th className="px-3 py-3">Role</th><th className="px-3 py-3">Created</th><th className="px-3 py-3 text-right">Action</th></tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b border-border last:border-0">
+                      <td className="px-3 py-3"><div>{user.display_name || "—"}</div><div className="text-xs text-muted-foreground">@{user.username}</div></td>
+                      <td className="px-3 py-3 uppercase text-xs tracking-widest">{user.role}</td>
+                      <td className="px-3 py-3 text-xs text-muted-foreground">{new Date(user.created_at).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right"><button onClick={() => handleDeleteUser(user)} className="border border-red-600 px-3 py-2 text-xs text-red-700 hover:bg-red-500/10">Remove</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         {/* Create principal */}
         <section className="w-full max-w-3xl space-y-4">

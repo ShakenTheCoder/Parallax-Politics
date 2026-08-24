@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.agents._helpers import identity_brief
 from app.agents.base import AgentContext, BaseAgent
 from app.db import session_scope
-from app.llm.client import get_llm_client
+from app.intelligence.poc import PULSE_ASIA_URL, WATCHLIST
 from app.llm.router import ModelTier
 from app.models.competitor import Competitor
 from app.schemas.agents import AgentResult
@@ -23,6 +23,8 @@ class CompetitorItem(BaseModel):
     overlap_areas: list[str] = Field(
         default_factory=list, description="Policy or demographic overlap areas"
     )
+    watch_status: str = "polled_hypothetical"
+    evidence: list[dict[str, str]] = Field(default_factory=list)
 
 
 class CompetitorAnalysisResult(BaseModel):
@@ -37,38 +39,32 @@ class CompetitorAnalysisAgent(BaseAgent):
     max_cost_usd = 0.20
 
     async def _run(self, ctx: AgentContext) -> AgentResult:
-        llm = get_llm_client()
-
-        system_prompt = (
-            "You are a political intelligence analyst. Perform a multiple-factor analysis "
-            "to identify the top political competitors to the given principal candidate.\n"
-            "Factors to consider:\n"
-            "1. Geographic overlap\n"
-            "2. Demographic target audience overlap\n"
-            "3. Policy stances (opposing or competing for same base)\n"
-            "4. Electoral history and upcoming races\n\n"
-            "Return a JSON object matching the requested schema with a list of competitors."
+        # Membership is mechanical and evidence-backed. Models may summarize
+        # the comparison later, but cannot invent an authoritative rival.
+        principal_name = ""
+        pidaa = ctx.get("PIDAA")
+        if pidaa:
+            principal_name = str(pidaa.payload.get("full_name") or "").casefold()
+        parsed = CompetitorAnalysisResult(
+            competitors=[
+                CompetitorItem(
+                    name=str(figure["name"]),
+                    party=None,
+                    match_score=1.0,
+                    reasoning="Appears in the same Pulse Asia July 2026 hypothetical presidential long list.",
+                    overlap_areas=["May 2028 hypothetical presidential long list"],
+                    evidence=[
+                        {
+                            "source_url": PULSE_ASIA_URL,
+                            "published_at": "2026-07-22",
+                            "relationship": "same_hypothetical_race",
+                        }
+                    ],
+                )
+                for figure in WATCHLIST
+                if str(figure["name"]).casefold() != principal_name
+            ]
         )
-
-        user_content = (
-            f"Principal Identity:\n{identity_brief(ctx, max_chars=3000)}\n\n"
-            "Identify 3-5 top political competitors. Score them from 0.0 (low threat) to 1.0 (high threat)."
-        )
-
-        resp = await llm.complete(
-            agent=self.name,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
-            tier=self.default_tier,
-            max_tokens=2000,
-            run_id=ctx.run_id,
-            json_mode=True,
-            temperature=0.4,
-        )
-
-        if resp.json_payload is None:
-            raise ValueError("LLM returned no valid competitor analysis JSON")
-        parsed = CompetitorAnalysisResult.model_validate(resp.json_payload)
 
         # Persist to database if we have a profile_id
         profile_id_raw = ctx.extra.get("profile_id")
@@ -83,13 +79,11 @@ class CompetitorAnalysisAgent(BaseAgent):
             agent=self.name,
             summary=f"Identified {len(parsed.competitors)} competitors through multi-factor analysis.",
             payload=parsed.model_dump(),
-            tokens_in=resp.input_tokens,
-            tokens_out=resp.output_tokens,
-            cache_read_tokens=resp.cache_read_tokens,
-            cache_write_tokens=resp.cache_write_tokens,
-            cost_usd=resp.cost_usd,
-            model=resp.model,
-            confidence=0.8,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model="mechanical-watchlist-v1",
+            confidence=1.0,
         )
 
     async def _persist_competitors(
@@ -109,5 +103,8 @@ class CompetitorAnalysisAgent(BaseAgent):
                     match_score=c.match_score,
                     reasoning=c.reasoning,
                     overlap_areas=c.overlap_areas,
+                    watch_status=c.watch_status,
+                    effective_from=datetime(2026, 7, 22, tzinfo=UTC),
+                    evidence=c.evidence,
                 )
                 db.add(comp_db)

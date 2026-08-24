@@ -85,15 +85,18 @@ class ExaClient:
 
         loop = asyncio.get_running_loop()
         try:
-            resp = await loop.run_in_executor(
-                None,
-                lambda: self._exa.search_and_contents(
-                    query,
-                    num_results=num_results,
-                    text={"max_characters": text_chars} if include_text else False,
-                    start_published_date=start_published_date,
-                    type="auto",
+            resp = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self._exa.search_and_contents(
+                        query,
+                        num_results=num_results,
+                        text={"max_characters": text_chars} if include_text else False,
+                        start_published_date=start_published_date,
+                        type="auto",
+                    ),
                 ),
+                timeout=get_settings().exa_request_timeout_seconds,
             )
         except Exception as exc:
             log.warning("exa.error", error=str(exc))

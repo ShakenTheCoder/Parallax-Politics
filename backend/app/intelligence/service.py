@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence.collector import SafePublicWebCollector
+from app.intelligence.poc import command_view
 from app.intelligence.policy import (
     CollectionPolicyError,
     enforce_cohort_privacy,
@@ -158,12 +159,12 @@ async def _audit(
 
 
 async def resolve_subject(db: AsyncSession, user: User, requested: UUID | None) -> Profile:
-    subject_id = requested if user.role in {"admin", "superadmin"} else user.principal_id
+    subject_id = requested if user.role == "superadmin" else user.principal_id
     if not subject_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="No authorized candidate is linked"
         )
-    if user.role not in {"admin", "superadmin"} and requested and requested != user.principal_id:
+    if user.role != "superadmin" and requested and requested != user.principal_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Candidate access denied")
     profile = await db.get(Profile, subject_id)
     if not profile:
@@ -397,9 +398,15 @@ async def collect_source(
         geography={},
         provenance={
             "authority": source_cfg.authority,
+            "connector": source_cfg.connector_kind,
             "collector": "scrapling-parser/httpx-safe-fetch-v1",
             "content_type": document.content_type,
+            "captured_at": now.isoformat(),
             "observed_at": now.isoformat(),
+            "source_rights": "public_web_attribution_only",
+            "metric_denominator": None,
+            "classification_confidence": 1.0,
+            "observation_type": "observed",
             "is_inference": False,
         },
         content_hash=document.content_hash,
@@ -425,8 +432,8 @@ async def collect_source(
 
 
 async def intelligence_overview(db: AsyncSession, user: User) -> IntelligenceOverview:
-    subject_filter = None if user.role in {"admin", "superadmin"} else user.principal_id
-    if user.role not in {"admin", "superadmin"} and not subject_filter:
+    subject_filter = None if user.role == "superadmin" else user.principal_id
+    if user.role != "superadmin" and not subject_filter:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="No authorized candidate is linked"
         )
@@ -498,6 +505,36 @@ async def intelligence_overview(db: AsyncSession, user: User) -> IntelligenceOve
         presence=presence,
         recent_signals=[_signal_out(row) for row in signals[:20]],
         data_notice="Online signals are observational and non-representative until calibrated against polling and consented panel evidence.",
+        election={
+            "date": "2028-05-08",
+            "date_status": "expected_constitutional_cycle",
+            "official_calendar_status": "pending",
+            "watchlist_status": "polled_hypothetical",
+        },
+        command_view=command_view(),
+        momentum={
+            "score": command_view()["score"],
+            "delta": command_view()["delta"],
+            "rank": command_view()["rank"],
+            "model_version": command_view()["model_version"],
+        },
+        coverage={
+            "confidence": command_view()["coverage_confidence"],
+            "rank_suppressed": command_view()["rank_suppressed"],
+            "missing_sources": [
+                "X",
+                "Google Trends",
+                "TikTok",
+                "authorized Meta analytics",
+            ],
+        },
+        latest_poll={
+            "pollster": "Pulse Asia Research, Inc.",
+            "field_dates": "June 28–July 3 and July 6, 2026",
+            "sample": 2400,
+            "margin_of_error": "±2 percentage points nationally",
+            "layer": "polling",
+        },
     )
 
 
@@ -623,7 +660,7 @@ async def create_scenario(
 
 async def list_scenarios(db: AsyncSession, user: User) -> list[ScenarioOut]:
     stmt = select(IntelligenceScenario).order_by(IntelligenceScenario.created_at.desc()).limit(100)
-    if user.role not in {"admin", "superadmin"}:
+    if user.role != "superadmin":
         if not user.principal_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="No authorized candidate is linked"
@@ -640,7 +677,7 @@ async def list_verdicts(db: AsyncSession, user: User) -> list[VerdictOut]:
         .order_by(StrategyVerdict.created_at.desc())
         .limit(100)
     )
-    if user.role not in {"admin", "superadmin"}:
+    if user.role != "superadmin":
         if not user.principal_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="No authorized candidate is linked"

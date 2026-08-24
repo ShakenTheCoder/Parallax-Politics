@@ -87,6 +87,10 @@ function ReviewControls({ verdict, onReviewed }: { verdict: StrategyVerdict; onR
 }
 
 export default function IntelligencePage() {
+  return <main className="flex-1" aria-label="Analysis Center" />;
+}
+
+export function LegacyIntelligencePage() {
   const router = useRouter();
   const { user, loading: sessionLoading } = useSession();
   const [view, setView] = useState<View>("overview");
@@ -261,8 +265,7 @@ export default function IntelligencePage() {
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-10 sm:px-8 sm:py-14">
       <header className="max-w-3xl">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">National political intelligence</p>
-        <h1 className="mt-3 font-serif text-4xl tracking-tight sm:text-5xl">Operational picture</h1>
+        <h1 className="font-serif text-4xl tracking-tight sm:text-5xl">Operational picture</h1>
         <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
           Time-bounded public evidence, competitive presence, and calibrated campaign-planning scenarios. Estimates remain provisional until analyst approval.
         </p>

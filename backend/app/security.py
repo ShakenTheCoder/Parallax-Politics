@@ -37,7 +37,7 @@ def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> st
     role = str((extra or {}).get("role") or "")
     lifetime = (
         settings.jwt_privileged_expires_minutes
-        if role in {"admin", "superadmin"}
+        if role == "superadmin"
         else settings.jwt_expires_minutes
     )
     payload: dict[str, Any] = {

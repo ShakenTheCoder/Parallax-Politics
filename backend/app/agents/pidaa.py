@@ -3,12 +3,10 @@
 Runs once at principal creation (after superadmin confirmation).
 Builds the full 11-section identity knowledge base from multi-query EXA fan-out.
 
-Pipeline:
-1. 8-facet EXA fan-out (parallel, capped at 8 results each).
-2. Cheap-tier rank + deduplicate → unified source pack (≤40 sources).
-3. One structured LLM synthesis (default tier) covering every dossier section.
-4. Aggregator pass: stitch + add source_index + coverage_gaps.
-5. Persist PrincipalIdentity row, emit AgentResult.
+Creation pipeline:
+1. Retrieve a broad, source-backed evidence pack for the confirmed candidate.
+2. Synthesize the dossier in independent section groups with the LLM.
+3. Persist the resulting evidence-backed identity and its coverage gaps.
 """
 
 from __future__ import annotations
@@ -70,7 +68,7 @@ class PIDAA(BaseAgent):
     max_cost_usd = 0.50
 
     async def _run(self, ctx: AgentContext) -> AgentResult:
-        """Build the identity from live source retrieval and LLM synthesis."""
+        """Build and persist an evidence-backed identity dossier."""
         return await self._run_deep(ctx)
 
     async def _run_deep(self, ctx: AgentContext) -> AgentResult:

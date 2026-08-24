@@ -138,4 +138,46 @@ async def resolve_wikipedia_identity(full_name: str) -> WikipediaIdentity | None
 async def resolve_wikimedia_portrait(full_name: str) -> str | None:
     """Return a high-resolution Wikimedia portrait for a public figure, if available."""
     identity = await resolve_wikipedia_identity(full_name)
-    return identity.portrait_url if identity else None
+    if identity and identity.portrait_url:
+        return identity.portrait_url
+    # Commons often has a file even when the English Wikipedia article is absent.
+    # Keep the match conservative: the file title must contain the first name and
+    # surname tokens, so a family member's portrait is not silently substituted.
+    tokens = _name_tokens(full_name)
+    if len(tokens) < 2:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=1.5, follow_redirects=True) as client:
+            response = await client.get(
+                "https://commons.wikimedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "generator": "search",
+                    "gsrsearch": full_name,
+                    "gsrnamespace": 6,
+                    "gsrlimit": 5,
+                    "prop": "imageinfo",
+                    "iiprop": "url",
+                    "iiurlwidth": 1200,
+                    "format": "json",
+                    "utf8": 1,
+                },
+                headers={"User-Agent": "Parallax-Politics/1.0 (source-backed identity lookup)"},
+            )
+            response.raise_for_status()
+            pages = response.json().get("query", {}).get("pages", {}).values()
+            for page in pages:
+                title_tokens = _name_tokens(str(page.get("title") or ""))
+                if not tokens.issubset(title_tokens):
+                    continue
+                info = (page.get("imageinfo") or [{}])[0]
+                source = info.get("thumburl") or info.get("url")
+                if (
+                    isinstance(source, str)
+                    and source.startswith("https://")
+                    and _WIKIMEDIA_HOST in source
+                ):
+                    return source
+    except (httpx.HTTPError, ValueError):
+        return None
+    return None

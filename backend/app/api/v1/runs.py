@@ -28,7 +28,7 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 
 def _can_access_run(run: Run, user: User) -> bool:
-    return user.role in {"admin", "superadmin"} or run.requested_by == user.id
+    return user.role == "superadmin" or run.requested_by == user.id
 
 
 def _profile_to_out(profile: Profile | None) -> PrincipalOut | None:

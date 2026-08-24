@@ -1,7 +1,7 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<>/*#@";
 
@@ -10,6 +10,8 @@ type LoaderProps = {
   speed?: number;
   label?: string;
   className?: string;
+  loop?: boolean;
+  animateOnHover?: boolean;
 };
 
 export function ScrambleLoader({
@@ -17,19 +19,24 @@ export function ScrambleLoader({
   speed = 1,
   label = "Loading",
   className = "",
+  loop = true,
+  animateOnHover = false,
 }: LoaderProps) {
   const reduce = useReducedMotion() ?? false;
   const [text, setText] = useState(target);
+  const intervalRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  const animate = useCallback(() => {
+    if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+
     if (reduce) {
-      const task = window.setTimeout(() => setText(target), 0);
-      return () => window.clearTimeout(task);
+      setText(target);
+      return;
     }
 
     let tick = 0;
     const total = target.length + 4;
-    const id = window.setInterval(() => {
+    intervalRef.current = window.setInterval(() => {
       const reveal = tick % total;
       setText(
         target
@@ -42,13 +49,30 @@ export function ScrambleLoader({
           .join(""),
       );
       tick += 1;
-    }, (speed / target.length) * 1000 * 0.55);
 
-    return () => window.clearInterval(id);
-  }, [reduce, speed, target]);
+      if (!loop && tick >= total && intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+        setText(target);
+      }
+    }, (speed / target.length) * 1000 * 0.55);
+  }, [loop, reduce, speed, target]);
+
+  useEffect(() => {
+    const task = window.setTimeout(animate, 0);
+    return () => {
+      window.clearTimeout(task);
+      if (intervalRef.current !== null) window.clearInterval(intervalRef.current);
+    };
+  }, [animate]);
 
   return (
-    <span role="status" aria-label={label} className={`font-mono tracking-[0.12em] ${className}`}>
+    <span
+      role="status"
+      aria-label={label}
+      onMouseEnter={animateOnHover ? animate : undefined}
+      className={`font-mono tracking-[0.12em] ${className}`}
+    >
       {text}
     </span>
   );

@@ -5,6 +5,7 @@ from app.api.v1 import (
     audience,
     auth,
     briefs,
+    glossary,
     intelligence,
     profiles,
     runs,
@@ -22,3 +23,4 @@ api_router.include_router(superadmin.router)
 api_router.include_router(briefs.router)
 api_router.include_router(audience.router)
 api_router.include_router(intelligence.router)
+api_router.include_router(glossary.router)

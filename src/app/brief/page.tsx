@@ -9,7 +9,9 @@ import {
   MyIdentityOut,
   streamRunEvents,
   TopicStance,
+  ThirtySecondBrief,
 } from "@/lib/api";
+import BriefView from "@/components/intelligence/BriefView";
 
 // --- generation step types --------------------------------------------------
 
@@ -291,8 +293,8 @@ function BriefDetail({ brief, onSeeNextMove }: { brief: BriefOut; onSeeNextMove:
   );
 }
 
-// --- identity panel ----------------------------------------------------------
-
+// Kept for the dedicated identity record route; it is intentionally not shown on the brief page.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function IdentityPanel({ data }: { data: MyIdentityOut }) {
   const [open, setOpen] = useState(false);
   const id = data.identity;
@@ -463,10 +465,12 @@ function HistoryView({
   briefs,
   selectedId,
   onSelect,
+  onArchive,
 }: {
   briefs: BriefSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onArchive: (id: string) => void;
 }) {
   if (briefs.length === 0) return (
     <div className="border border-dashed border-border p-10 text-center">
@@ -483,24 +487,34 @@ function HistoryView({
         {briefs.map((b) => {
           const isActive = b.id === selectedId;
           return (
-            <button
+            <div
               key={b.id}
-              onClick={() => onSelect(b.id)}
               className={`w-full text-left p-4 hover:bg-border/30 transition-colors ${isActive ? "bg-border/20" : ""}`}
             >
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                 <p className="text-xs text-muted-foreground">{fmtDate(b.created_at)}</p>
-                <span className={`text-[10px] px-2 py-0.5 border ${isActive ? "border-foreground" : "border-border"}`}>
-                  {Math.round(b.confidence * 100)}% conf
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] px-2 py-0.5 border ${isActive ? "border-foreground" : "border-border"}`}>
+                    {Math.round(b.confidence * 100)}% conf
+                  </span>
+                  <button
+                    onClick={() => onArchive(b.id)}
+                    className="text-[10px] px-2 py-0.5 border border-border text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                    aria-label={`Archive brief from ${fmtDate(b.created_at)}`}
+                  >
+                    Archive
+                  </button>
+                </div>
               </div>
-              <p className="text-sm font-medium leading-snug line-clamp-2">{b.action_what}</p>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
-                <span>Risk: <span className="text-foreground">{b.top_risk_label || "—"}</span></span>
-                <span>·</span>
-                <span>Opp: <span className="text-foreground">{b.top_opportunity_label || "—"}</span></span>
-              </div>
-            </button>
+              <button onClick={() => onSelect(b.id)} className="w-full text-left">
+                <p className="text-sm font-medium leading-snug line-clamp-2">{b.action_what}</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                  <span>Risk: <span className="text-foreground">{b.top_risk_label || "—"}</span></span>
+                  <span>·</span>
+                  <span>Opp: <span className="text-foreground">{b.top_opportunity_label || "—"}</span></span>
+                </div>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -590,12 +604,55 @@ function GeneratorProgress({
 
 // --- main page ---------------------------------------------------------------
 
+function PidaaLoadingBanner() {
+  return (
+    <div className="flex items-center gap-3 border border-yellow-500/60 bg-yellow-500/5 px-4 py-3 text-sm">
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 shrink-0 animate-spin text-yellow-500" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12a8 8 0 10-8 8" /></svg>
+      <div>
+        <p className="font-medium">Preparing your identity dossier</p>
+        <p className="text-xs text-muted-foreground">PIDAA is still preparing deeper identity data; you can generate a brief now.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function BriefPage() {
+  const [brief, setBrief] = useState<ThirtySecondBrief | null>(null);
+  const [briefError, setBriefError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.getBriefView()
+      .then((payload) => {
+        if (!cancelled) setBrief(payload);
+      })
+      .catch((reason) => {
+        if (!cancelled) setBriefError(reason instanceof Error ? reason.message : "Brief could not be loaded.");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <main className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-10">
+      {briefError && (
+        <div className="mx-auto max-w-2xl border-l-4 border-[var(--signal-red)] bg-[var(--signal-wash)] p-5">
+          <p className="font-semibold">Brief unavailable</p>
+          <p className="mt-2 text-sm leading-6">{briefError} No substitute scores or opinions are shown when the evidence service is unavailable.</p>
+        </div>
+      )}
+      {!brief && !briefError && <p className="mx-auto max-w-2xl py-20 text-center text-sm text-muted-foreground">Opening your latest Brief…</p>}
+      {brief && <BriefView brief={brief} />}
+    </main>
+  );
+}
+
+export function LegacyBriefPage() {
   const [identity, setIdentity] = useState<MyIdentityOut | null>(null);
   const [briefs, setBriefs] = useState<BriefSummary[]>([]);
   const [active, setActive] = useState<BriefOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [genStatus, setGenStatus] = useState<GenStatus>("idle");
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [steps, setSteps] = useState<StepState[]>(makeSteps());
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"brief" | "sources" | "nextmove" | "history">("brief");
@@ -634,6 +691,17 @@ export default function BriefPage() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (!cancelled && !msg.includes("404")) setError(msg);
+      }
+      try {
+        const run = await api.getActiveBrief();
+        if (!cancelled && run.run_id) {
+          setActiveRunId(run.run_id);
+          setGenStatus("generating");
+          setSteps((previous) => previous.map((step, index) => index === 0 ? { ...step, status: "running" } : step));
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!cancelled && !msg.includes("404")) setError(msg);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -641,6 +709,38 @@ export default function BriefPage() {
     return () => { cancelled = true; stopPolling(); closeSSE(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Server state is authoritative. This survives reloads, makes the button
+  // unavailable while a run exists, and handles a run whose SSE stream began
+  // before this browser session.
+  useEffect(() => {
+    if (!activeRunId) return;
+    let cancelled = false;
+    const refreshRun = async () => {
+      try {
+        const run = await api.getRun(activeRunId);
+        if (cancelled || (run.status !== "completed" && run.status !== "failed" && run.status !== "budget_exhausted")) return;
+        if (run.status === "completed") {
+          const list = await api.listBriefs();
+          if (cancelled) return;
+          setBriefs(list);
+          if (list.length > 0) setActive(await api.getLatestBrief());
+          setSteps((previous) => previous.map((step) => ({ ...step, status: "completed" })));
+          setGenStatus("completed");
+        } else {
+          setGenStatus(run.status === "budget_exhausted" ? "budget_exhausted" : "failed");
+          setError(run.error || "Brief generation failed");
+        }
+        setActiveRunId(null);
+        stopPolling();
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    void refreshRun();
+    const timer = setInterval(() => { void refreshRun(); }, 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [activeRunId, stopPolling]);
 
   const handleGenerate = async () => {
     setGenStatus("generating");
@@ -650,6 +750,7 @@ export default function BriefPage() {
     stopPolling();
     try {
       const { run_id } = await api.generateBrief();
+      setActiveRunId(run_id);
 
       // Fetch streaming keeps bearer credentials out of the URL.
       const eventAbort = new AbortController();
@@ -667,10 +768,12 @@ export default function BriefPage() {
             } else if (type === "run.failed" || type === "run.budget_exhausted") {
               setGenStatus(type === "run.failed" ? "failed" : "budget_exhausted");
               setError(typeof event.error === "string" ? event.error : type === "run.failed" ? "Run failed" : "Budget cap reached");
+              setActiveRunId(null);
               stopPolling();
             } else if (type === "run.completed") {
               setGenStatus("completed");
               setSteps((prev) => prev.map((item) => ({ ...item, status: "completed" })));
+              setActiveRunId(null);
             }
           }
         } catch (error) {
@@ -688,6 +791,7 @@ export default function BriefPage() {
           if (list.length > baseline) {
             setBriefs(list);
             try { setActive(await api.getLatestBrief()); } catch {}
+            setActiveRunId(null);
             stopPolling();
             return;
           }
@@ -697,12 +801,14 @@ export default function BriefPage() {
         if (attempts >= 45) {
           stopPolling();
           setError("Brief generation timed out. Check backend logs.");
+          setActiveRunId(null);
         }
       }, POLL_MS);
 
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setGenStatus("failed");
+      setActiveRunId(null);
     }
   };
 
@@ -716,14 +822,30 @@ export default function BriefPage() {
     }
   };
 
+  const handleArchive = async (id: string) => {
+    try {
+      await api.archiveBrief(id);
+      const list = await api.listBriefs();
+      setBriefs(list);
+      if (active?.id === id) {
+        if (list.length === 0) {
+          setActive(null);
+        } else {
+          setActive(await api.getLatestBrief());
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const pidaaReady = identity?.pidaa_status === "ready";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
 
-        {/* Identity panel (collapsible) */}
-        {identity && <IdentityPanel data={identity} />}
+        {!loading && !pidaaReady && <PidaaLoadingBanner />}
 
         {/* Active brief or empty state */}
         {loading ? (
@@ -776,10 +898,10 @@ export default function BriefPage() {
               </div>
               <button
                 onClick={handleGenerate}
-                disabled={genStatus === "generating" || !pidaaReady}
+                disabled={genStatus === "generating" || activeRunId !== null}
                 className="px-4 py-2 bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ml-4"
               >
-                {genStatus === "generating" ? "Generating…" : "Generate New Brief"}
+                {activeRunId ? "Brief in progress…" : genStatus === "generating" ? "Generating…" : "Generate New Brief"}
               </button>
             </div>
 
@@ -792,25 +914,18 @@ export default function BriefPage() {
             {activeTab === "brief" && <BriefDetail brief={active} onSeeNextMove={() => setActiveTab("nextmove")} />}
             {activeTab === "sources" && <SourcesView brief={active} />}
             {activeTab === "nextmove" && <NextMoveView brief={active} />}
-            {activeTab === "history" && <HistoryView briefs={briefs} selectedId={active?.id ?? null} onSelect={handleSelect} />}
+            {activeTab === "history" && <HistoryView briefs={briefs} selectedId={active?.id ?? null} onSelect={handleSelect} onArchive={handleArchive} />}
           </div>
         ) : (
-          <div className="border border-dashed border-border p-10 text-center space-y-4">
+          <div className="p-10 text-center space-y-4">
             <p className="text-muted-foreground">No briefs yet.</p>
-            {pidaaReady && (
-              <button
-                onClick={handleGenerate}
-                disabled={genStatus === "generating"}
-                className="px-6 py-3 bg-foreground text-background font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {genStatus === "generating" ? "Generating…" : "Generate New Brief"}
-              </button>
-            )}
-            {!pidaaReady && (
-              <p className="text-xs text-muted-foreground">
-                PIDAA must finish before briefs are available.
-              </p>
-            )}
+            <button
+              onClick={handleGenerate}
+              disabled={genStatus === "generating" || activeRunId !== null}
+              className="px-6 py-3 bg-foreground text-background font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {activeRunId ? "Brief in progress…" : genStatus === "generating" ? "Generating…" : "Generate New Brief"}
+            </button>
           </div>
         )}
 

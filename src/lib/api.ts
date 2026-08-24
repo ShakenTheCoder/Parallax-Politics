@@ -6,7 +6,7 @@ export const API_BASE = "/api/backend";
 const SESSION_MARKER_KEY = "parallax.session";
 
 export function isAdminRole(role: string | null | undefined): boolean {
-  return role === "admin" || role === "superadmin";
+  return role === "superadmin";
 }
 
 function getCookie(name: string): string | null {
@@ -68,6 +68,20 @@ export type UserOut = {
   display_name: string | null;
   role: string;
   has_profile: boolean;
+};
+
+export type UserRole = "principal" | "superadmin";
+
+export type AdminUser = UserOut & {
+  created_at: string;
+  role: UserRole;
+};
+
+export type AdminUserCreate = {
+  username: string;
+  password: string;
+  display_name?: string;
+  role: UserRole;
 };
 
 export type LoginResponse = {
@@ -255,10 +269,16 @@ export type BriefOut = {
   model: string | null;
   cost_usd: number;
   confidence: number;
+  command_view?: CommandView | null;
 };
 
 export type BriefGenerateOut = {
   run_id: string;
+  status: string;
+};
+
+export type BriefActiveOut = {
+  run_id: string | null;
   status: string;
 };
 
@@ -328,6 +348,36 @@ export type CreatePrincipalOut = {
   identity_id: string;
   run_id: string;
   credentials: { username: string; password: string };
+};
+
+export type PoliticalFigureSummary = {
+  id: string;
+  slug: string;
+  canonical_name: string;
+  aliases: string[];
+  category: string;
+  current_role: string | null;
+  office: string | null;
+  party: string | null;
+  region: string | null;
+  status: string;
+  portrait_url: string | null;
+  confidence: number;
+  last_verified_at: string | null;
+  coverage_gaps: string[];
+  social_platforms: string[];
+};
+
+export type PoliticalFigureDetail = PoliticalFigureSummary & {
+  jurisdiction: string | null;
+  faction: string | null;
+  portrait_source_url: string | null;
+  portrait_attribution: string | null;
+  data: Record<string, unknown>;
+  social_accounts: { platform: string; url: string; handle?: string | null; account_type: string; verification: string }[];
+  relationships: Record<string, unknown>[];
+  source_ledger: { url: string; title?: string | null; publisher?: string | null; supports: string[]; confidence: number; accessed_at?: string | null }[];
+  snapshot_count: number;
 };
 
 // --- Audience Center Types ---
@@ -414,6 +464,134 @@ export type IntelligenceOverview = {
   presence: PresenceMetric[];
   recent_signals: IntelligenceSignal[];
   data_notice: string;
+  election?: Record<string, unknown> | null;
+  command_view?: CommandView | null;
+  momentum?: Record<string, unknown> | null;
+  coverage?: CoverageReport | null;
+  latest_poll?: PollRecord | null;
+};
+
+export type CommandMetricTile = {
+  key: string;
+  label: string;
+  value: string;
+  delta: string;
+  evidence_ids: string[];
+};
+
+export type CommandView = {
+  subject: string;
+  watch_status: string;
+  score: number | null;
+  previous_score: number | null;
+  delta: number | null;
+  rank: number | null;
+  rank_suppressed: boolean;
+  coverage_confidence: number;
+  freshness_minutes: number | null;
+  model_version: string;
+  headline: string;
+  tiles: CommandMetricTile[];
+  opportunity: string;
+  risk: string;
+  next_move: string;
+  next_move_reviewed: boolean;
+  coverage_note: string;
+};
+
+export type BriefImportance = "critical" | "high" | "medium" | "low" | "unrated";
+
+export type ThirtySecondBrief = {
+  identity: {
+    name: string;
+    position: string | null;
+    portrait_url: string | null;
+  };
+  score: {
+    value: number | null;
+    delta: number | null;
+    updated_at: string | null;
+  };
+  watchlist: {
+    is_principal: boolean;
+    rank: number | null;
+    name: string;
+    position: string | null;
+    portrait_url: string | null;
+    score: number | null;
+    delta: number | null;
+  }[];
+  appearances_window_hours: number;
+  appearances: {
+    id: string;
+    caption: string;
+    source_name: string;
+    source_url: string;
+    appeared_at: string;
+  }[];
+  latest_opinion: {
+    id: string;
+    summary: string;
+    importance: BriefImportance;
+    generated_at: string;
+    source_count: number;
+  } | null;
+  previous_opinions: {
+    id: string;
+    summary: string;
+    importance: BriefImportance;
+    generated_at: string;
+    source_count: number;
+  }[];
+  data_status: "live" | "partial" | "unavailable";
+  notice: string;
+};
+
+export type PollRecord = {
+  pollster: string;
+  published_at?: string;
+  field_dates: string;
+  sample: number;
+  population?: string;
+  mode?: string;
+  margin_of_error: string;
+  question?: string;
+  source_url?: string;
+  layer?: string;
+  results?: { name: string; value: number }[];
+};
+
+export type CoverageReport = {
+  confidence: number;
+  threshold?: number;
+  rank_suppressed: boolean;
+  families?: { name: string; status: string; score: number; freshness: string | null; action: string }[];
+  missing_sources: string[];
+};
+
+export type AnalysisCenter = {
+  snapshot: { effective_at: string; mode: string; notice: string; model_version: string; [key: string]: unknown };
+  election: { label: string; date: string; official_calendar_status: string; watchlist_label: string };
+  command_view: CommandView;
+  momentum_components: { key: string; label: string; weight: number; score: number; delta: number }[];
+  timeline: { date: string; values: Record<string, number> }[];
+  watchlist: { slug: string; name: string; office: string; poll: number; strongest_channel: string; issue: string; watch_status: string; rank: number | null; momentum: number; movement: number; earned_visibility: number; cadence: string }[];
+  channels: { name: string; score: number | null; coverage: number; comparison: string }[];
+  narratives: { name: string; stage: string; velocity: number; owner: string; source_diversity: number; evidence_ids: string[] }[];
+  appearances: { id: string; title: string; figure: string; occurred_at: string; source_status: string; topics: { label: string; share: number }[]; message_consistency: number; quote_pickup: number; lift: Record<string, number>; evidence_ids: string[] }[];
+  audience_lab: { name: string; basis: string; synthetic: boolean; sample_runs: number; consensus: number; variance: number; rubric: Record<string, number>; note: string }[];
+  latest_poll: PollRecord;
+  coverage: CoverageReport;
+  evidence: { id: string; title: string; url: string; source: string; published_at: string | null; captured_at: string; layer: string; rights: string; geography: string; classification_confidence: number; observation_type: string }[];
+  provider_status: Record<string, string>;
+};
+
+export type ScenarioComparison = {
+  context_pack: string;
+  provider_status: string;
+  cohorts: number;
+  results: { id: string; title: string; rubric: Record<string, number>; consensus: number; variance: number; sample_runs_per_cohort: number; label: string }[];
+  warnings: string[];
 };
 
 export type IntelligenceScenario = {
@@ -535,11 +713,17 @@ export const api = {
   async listBriefs(): Promise<BriefSummary[]> {
     return request<BriefSummary[]>("/api/v1/briefs");
   },
+  async getActiveBrief(): Promise<BriefActiveOut> {
+    return request<BriefActiveOut>("/api/v1/briefs/active");
+  },
   async getBrief(id: string): Promise<BriefOut> {
     return request<BriefOut>(`/api/v1/briefs/${id}`);
   },
   async getLatestBrief(): Promise<BriefOut> {
     return request<BriefOut>("/api/v1/briefs/latest");
+  },
+  async archiveBrief(id: string): Promise<void> {
+    await request<void>(`/api/v1/briefs/${id}/archive`, { method: "POST" });
   },
   async getMyIdentity(): Promise<MyIdentityOut> {
     return request<MyIdentityOut>("/api/v1/briefs/me/identity");
@@ -556,6 +740,18 @@ export const api = {
   // --- Intelligence ---
   async getIntelligenceOverview(): Promise<IntelligenceOverview> {
     return request<IntelligenceOverview>("/api/v1/intelligence/overview");
+  },
+  async getBriefView(): Promise<ThirtySecondBrief> {
+    return request<ThirtySecondBrief>("/api/v1/intelligence/brief");
+  },
+  async getAnalysisCenter(): Promise<AnalysisCenter> {
+    return request<AnalysisCenter>("/api/v1/intelligence/analysis");
+  },
+  async compareScenarioVariants(variants: { id: string; title: string; message: string }[]): Promise<ScenarioComparison> {
+    return request<ScenarioComparison>("/api/v1/intelligence/scenario-comparison", {
+      method: "POST",
+      body: JSON.stringify({ variants }),
+    });
   },
   async getAgentFleet(): Promise<AgentFleet> {
     return request<AgentFleet>("/api/v1/intelligence/agents");
@@ -643,6 +839,21 @@ export const api = {
       saAuth: true,
     });
   },
+  async listGlossaryFigures(params?: { q?: string; category?: string }): Promise<PoliticalFigureSummary[]> {
+    const search = new URLSearchParams();
+    if (params?.q) search.set("q", params.q);
+    if (params?.category) search.set("category", params.category);
+    return request<PoliticalFigureSummary[]>(`/api/v1/admin/glossary/figures${search.size ? `?${search}` : ""}`, { saAuth: true });
+  },
+  async getGlossaryFigure(slug: string): Promise<PoliticalFigureDetail> {
+    return request<PoliticalFigureDetail>(`/api/v1/admin/glossary/figures/${encodeURIComponent(slug)}`, { saAuth: true });
+  },
+  async seedGlossary(): Promise<{ run_id: string; status: string }> {
+    return request<{ run_id: string; status: string }>("/api/v1/admin/glossary/seed", { method: "POST", saAuth: true });
+  },
+  async refreshGlossaryFigure(slug: string): Promise<{ run_id: string; status: string }> {
+    return request<{ run_id: string; status: string }>(`/api/v1/admin/glossary/figures/${encodeURIComponent(slug)}/refresh`, { method: "POST", saAuth: true });
+  },
   async listPrincipals(): Promise<PrincipalSummary[]> {
     return request<PrincipalSummary[]>("/api/v1/admin/principals", { saAuth: true });
   },
@@ -657,6 +868,22 @@ export const api = {
   },
   async archivePrincipal(profileId: string): Promise<void> {
     return request<void>(`/api/v1/admin/principals/${profileId}`, {
+      method: "DELETE",
+      saAuth: true,
+    });
+  },
+  async listUsers(): Promise<AdminUser[]> {
+    return request<AdminUser[]>("/api/v1/admin/users", { saAuth: true });
+  },
+  async createUser(payload: AdminUserCreate): Promise<AdminUser> {
+    return request<AdminUser>("/api/v1/admin/users", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      saAuth: true,
+    });
+  },
+  async deleteUser(userId: string): Promise<void> {
+    return request<void>(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
       method: "DELETE",
       saAuth: true,
     });

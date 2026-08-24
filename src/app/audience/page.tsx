@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import { api, AudienceInstructionsSummary, isAdminRole } from "@/lib/api";
 import { useSession } from "@/lib/SessionContext";
 
-export default function AudienceCenterPage() {
+export default function AudienceRedirectPage() {
+  redirect("/intelligence#audience-lab");
+}
+
+export function LegacyAudienceCenterPage() {
   const router = useRouter();
   const { user, loading: sessionLoading } = useSession();
   const [activeTab, setActiveTab] = useState<"personal" | "competitors" | "contextual" | "facebook">("personal");
@@ -336,7 +340,7 @@ export default function AudienceCenterPage() {
   };
 
   const renderEmptyState = (title: string) => (
-    <div className="border border-dashed border-border p-10 text-center space-y-3">
+    <div className="p-10 text-center space-y-3">
       <p className="text-sm font-medium">{title} Instructions Not Found</p>
       <p className="text-xs text-muted-foreground">
         Run the audience analysis to generate extraction instructions for this perspective.
@@ -350,7 +354,6 @@ export default function AudienceCenterPage() {
         
         {/* Header Section */}
         <div className="space-y-2">
-          <p className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground">Parallax Politics · Command View</p>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Audience Center</h1>
@@ -384,7 +387,7 @@ export default function AudienceCenterPage() {
                 onClick={() => setActiveTab("personal")}
                 className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === "personal"
-                    ? "text-foreground border-b-2 border-foreground"
+                    ? "tab-active"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -394,7 +397,7 @@ export default function AudienceCenterPage() {
                 onClick={() => setActiveTab("competitors")}
                 className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === "competitors"
-                    ? "text-foreground border-b-2 border-foreground"
+                    ? "tab-active"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -404,7 +407,7 @@ export default function AudienceCenterPage() {
                 onClick={() => setActiveTab("contextual")}
                 className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === "contextual"
-                    ? "text-foreground border-b-2 border-foreground"
+                    ? "tab-active"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -414,7 +417,7 @@ export default function AudienceCenterPage() {
                 onClick={() => setActiveTab("facebook")}
                 className={`px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === "facebook"
-                    ? "text-foreground border-b-2 border-foreground"
+                    ? "tab-active"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >

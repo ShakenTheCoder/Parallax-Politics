@@ -65,6 +65,7 @@ def _get_nvidia_client() -> AsyncOpenAI:
         _client = AsyncOpenAI(
             api_key=s.nvidia_api_key,
             base_url=s.nvidia_base_url,
+            timeout=s.llm_request_timeout_seconds,
         )
     return _client
 

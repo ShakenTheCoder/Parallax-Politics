@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
@@ -11,9 +12,9 @@ from app.api.deps import CurrentUser, DbSession
 from app.models.principal_brief import PrincipalBrief
 from app.models.principal_identity import PrincipalIdentity
 from app.models.profile import Profile
-from app.models.run import Run, RunStatus
 from app.schemas.brief import (
     BriefActionCard,
+    BriefActiveOut,
     BriefGenerateOut,
     BriefOut,
     BriefSource,
@@ -22,6 +23,7 @@ from app.schemas.brief import (
     TopOpportunity,
     TopRisk,
 )
+from app.services.brief_runs import enqueue_brief_run, get_active_brief_run
 from app.services.orchestrator import execute_run
 
 router = APIRouter(prefix="/briefs", tags=["briefs"])
@@ -42,6 +44,7 @@ def _row_to_out(row: PrincipalBrief) -> BriefOut:
         model=row.model,
         cost_usd=float(row.cost_usd or 0.0),
         confidence=float(row.confidence or 0.0),
+        command_view=None,
     )
 
 
@@ -85,38 +88,29 @@ async def generate_brief(
     """Kick off a Brief build for the current user's principal."""
     profile = await _resolve_principal(db, user)
 
-    # Require a built PIDAA identity before allowing a brief
-    pi_res = await db.execute(
-        select(PrincipalIdentity).where(PrincipalIdentity.profile_id == profile.id)
-    )
-    pi = pi_res.scalar_one_or_none()
-    if not pi or pi.status != "ready":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Principal identity not ready (status: {pi.status if pi else 'missing'}). "
-            "Wait for the PIDAA build to complete before generating a brief.",
-        )
-
-    run = Run(
-        subject_id=profile.id,
+    run, created = await enqueue_brief_run(
+        db,
+        profile=profile,
         requested_by=user.id,
-        situation_prompt="",  # deprecated; kept empty for schema compat
-        status=RunStatus.queued,
-        meta={
-            "kind": "brief_build",
-            "pack_id": profile.pack_id,
-            "profile_id": str(profile.id),
-        },
+        trigger="manual",
     )
-    db.add(run)
     await db.commit()
-    await db.refresh(run)
-
-    background.add_task(execute_run, run.id)
-    return BriefGenerateOut(run_id=run.id, status="queued")
+    if created:
+        background.add_task(execute_run, run.id)
+    return BriefGenerateOut(run_id=run.id, status="queued" if created else "running")
 
 
 # --- Read -------------------------------------------------------------------
+
+
+@router.get("/active", response_model=BriefActiveOut)
+async def get_active_brief(db: DbSession, user: CurrentUser) -> BriefActiveOut:
+    """Return the current in-flight Brief so a reloaded client can resume it."""
+    profile = await _resolve_principal(db, user)
+    run = await get_active_brief_run(db, profile.id)
+    if not run:
+        return BriefActiveOut()
+    return BriefActiveOut(run_id=run.id, status=run.status.value)
 
 
 @router.get("", response_model=list[BriefSummary])
@@ -124,7 +118,10 @@ async def list_my_briefs(db: DbSession, user: CurrentUser) -> list[BriefSummary]
     profile = await _resolve_principal(db, user)
     res = await db.execute(
         select(PrincipalBrief)
-        .where(PrincipalBrief.profile_id == profile.id)
+        .where(
+            PrincipalBrief.profile_id == profile.id,
+            PrincipalBrief.archived_at.is_(None),
+        )
         .order_by(desc(PrincipalBrief.created_at))
         .limit(50)
     )
@@ -136,7 +133,10 @@ async def get_my_latest_brief(db: DbSession, user: CurrentUser) -> BriefOut:
     profile = await _resolve_principal(db, user)
     res = await db.execute(
         select(PrincipalBrief)
-        .where(PrincipalBrief.profile_id == profile.id)
+        .where(
+            PrincipalBrief.profile_id == profile.id,
+            PrincipalBrief.archived_at.is_(None),
+        )
         .order_by(desc(PrincipalBrief.created_at))
         .limit(1)
     )
@@ -180,6 +180,24 @@ async def get_my_identity(db: DbSession, user: CurrentUser) -> dict:
         if pi
         else None,
     }
+
+
+@router.post("/{brief_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
+async def archive_brief(brief_id: UUID, db: DbSession, user: CurrentUser) -> None:
+    """Soft-archive one of the current principal's briefs, preserving the audit record."""
+    profile = await _resolve_principal(db, user)
+    res = await db.execute(
+        select(PrincipalBrief).where(
+            PrincipalBrief.id == brief_id,
+            PrincipalBrief.profile_id == profile.id,
+        )
+    )
+    row = res.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brief not found")
+    if row.archived_at is None:
+        row.archived_at = datetime.now(UTC)
+        await db.commit()
 
 
 @router.get("/{brief_id}", response_model=BriefOut)

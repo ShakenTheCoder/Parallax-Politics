@@ -60,10 +60,10 @@ def identity_query_seeds(ctx: AgentContext) -> list[str]:
     Used by SGA when running inside the Brief pipeline.
     """
     pidaa = ctx.get("PIDAA")
-    if not pidaa:
-        return []
-    p = pidaa.payload or {}
-    name = p.get("full_name") or ""
+    p = pidaa.payload if pidaa else {}
+    # A concurrent Brief may start before PIDAA persists. The confirmed profile
+    # name is only a retrieval key; it is never presented as analytical output.
+    name = p.get("full_name") or str(ctx.extra.get("full_name") or "")
     seeds: list[str] = []
     if name:
         seeds.append(f"{name} latest news")

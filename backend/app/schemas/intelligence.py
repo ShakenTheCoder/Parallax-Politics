@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -27,7 +27,7 @@ class CollectionSourceCreate(StrictModel):
     base_url: AnyHttpUrl
     authority: SourceAuthority
     connector_kind: str = Field(
-        default="scrapling", pattern=r"^(scrapling|official_api|licensed_feed)$"
+        default="scrapling", pattern=r"^(scrapling|rss|official_api|licensed_feed)$"
     )
     schedule_minutes: int = Field(default=15, ge=15, le=1440)
     robots_observed: bool = True
@@ -44,14 +44,15 @@ class CollectionSourceCreate(StrictModel):
     @model_validator(mode="after")
     def validate_connector_authority(self) -> CollectionSourceCreate:
         expected = {
-            SourceAuthority.public_web: "scrapling",
-            SourceAuthority.official_api: "official_api",
-            SourceAuthority.licensed_feed: "licensed_feed",
-            SourceAuthority.representative_poll: "licensed_feed",
-            SourceAuthority.consented_panel: "licensed_feed",
+            SourceAuthority.public_web: {"scrapling", "rss"},
+            SourceAuthority.official_api: {"official_api"},
+            SourceAuthority.licensed_feed: {"licensed_feed"},
+            SourceAuthority.representative_poll: {"licensed_feed"},
+            SourceAuthority.consented_panel: {"licensed_feed"},
         }[self.authority]
-        if self.connector_kind != expected:
-            raise ValueError(f"{self.authority.value} sources require the {expected} connector")
+        if self.connector_kind not in expected:
+            choices = " or ".join(sorted(expected))
+            raise ValueError(f"{self.authority.value} sources require the {choices} connector")
         if self.connector_kind == "scrapling" and not self.robots_observed:
             raise ValueError("public web collection must observe robots policy")
         return self
@@ -121,6 +122,16 @@ class SignalOut(BaseModel):
 class CollectionResult(BaseModel):
     created: bool
     signal: SignalOut
+
+
+class FreeFeedCollectionOut(BaseModel):
+    feeds_checked: int = Field(ge=0)
+    entries_seen: int = Field(ge=0)
+    signals_created: int = Field(ge=0)
+    duplicates: int = Field(ge=0)
+    unmatched: int = Field(ge=0)
+    opinions_created: int = Field(ge=0)
+    errors: list[str] = Field(default_factory=list)
 
 
 class CohortSpec(StrictModel):
@@ -209,6 +220,144 @@ class IntelligenceOverview(BaseModel):
     presence: list[PresenceMetric]
     recent_signals: list[SignalOut]
     data_notice: str
+    election: dict[str, Any] | None = None
+    command_view: dict[str, Any] | None = None
+    momentum: dict[str, Any] | None = None
+    coverage: dict[str, Any] | None = None
+    latest_poll: dict[str, Any] | None = None
+
+
+class CommandViewOut(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    subject: str
+    watch_status: str
+    score: float | None
+    previous_score: float | None
+    delta: float | None
+    rank: int | None
+    rank_suppressed: bool
+    coverage_confidence: float = Field(ge=0, le=1)
+    model_version: str
+    headline: str
+
+
+BriefImportance = Literal["critical", "high", "medium", "low", "unrated"]
+
+
+class BriefIdentityOut(BaseModel):
+    name: str
+    position: str | None = None
+    portrait_url: str | None = None
+
+
+class BriefScoreOut(BaseModel):
+    value: float | None = None
+    delta: float | None = None
+    updated_at: datetime | None = None
+
+
+class BriefWatchlistRatingOut(BaseModel):
+    is_principal: bool = False
+    rank: int | None = None
+    name: str
+    position: str | None = None
+    portrait_url: str | None = None
+    score: float | None = None
+    delta: float | None = None
+
+
+class BriefAppearanceOut(BaseModel):
+    id: str
+    caption: str
+    source_name: str
+    source_url: str
+    appeared_at: datetime
+
+
+class BriefMediaOpinionOut(BaseModel):
+    id: str
+    summary: str
+    importance: BriefImportance = "unrated"
+    generated_at: datetime
+    source_count: int = Field(default=0, ge=0)
+
+
+class BriefViewOut(BaseModel):
+    identity: BriefIdentityOut
+    score: BriefScoreOut
+    watchlist: list[BriefWatchlistRatingOut]
+    appearances_window_hours: int = 36
+    appearances: list[BriefAppearanceOut]
+    latest_opinion: BriefMediaOpinionOut | None = None
+    previous_opinions: list[BriefMediaOpinionOut] = Field(default_factory=list, max_length=3)
+    data_status: Literal["live", "partial", "unavailable"]
+    notice: str
+
+
+class AnalysisCenterOut(BaseModel):
+    snapshot: dict[str, Any]
+    election: dict[str, Any]
+    command_view: CommandViewOut
+    momentum_components: list[dict[str, Any]]
+    timeline: list[dict[str, Any]]
+    watchlist: list[dict[str, Any]]
+    channels: list[dict[str, Any]]
+    narratives: list[dict[str, Any]]
+    appearances: list[dict[str, Any]]
+    audience_lab: list[dict[str, Any]]
+    latest_poll: dict[str, Any]
+    coverage: dict[str, Any]
+    evidence: list[dict[str, Any]]
+    provider_status: dict[str, Any]
+
+
+class EvidenceExplorerOut(BaseModel):
+    snapshot_effective_at: datetime
+    signals: list[dict[str, Any]]
+    count: int
+
+
+class MethodologyOut(BaseModel):
+    model_version: str
+    window: str
+    comparison_window: str
+    component_weights: dict[str, float]
+    eligible_layers: list[str]
+    excluded_layers: list[str]
+    rank_coverage_threshold: float
+    missing_data_policy: str
+    documentation_path: str
+
+
+class AppearanceListOut(BaseModel):
+    snapshot_effective_at: datetime
+    appearances: list[dict[str, Any]]
+
+
+class ScenarioVariant(StrictModel):
+    id: str = Field(min_length=1, max_length=60, pattern=r"^[a-zA-Z0-9_-]+$")
+    title: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=20, max_length=2000)
+
+
+class ScenarioComparisonCreate(StrictModel):
+    variants: list[ScenarioVariant] = Field(min_length=1, max_length=3)
+
+    @field_validator("variants")
+    @classmethod
+    def unique_variant_ids(cls, variants: list[ScenarioVariant]) -> list[ScenarioVariant]:
+        if len({item.id for item in variants}) != len(variants):
+            raise ValueError("variant ids must be unique")
+        return variants
+
+
+class ScenarioComparisonOut(BaseModel):
+    context_pack: str
+    provider_status: str
+    cohorts: int
+    results: list[dict[str, Any]]
+    warnings: list[str]
 
 
 class AgentDefinition(BaseModel):

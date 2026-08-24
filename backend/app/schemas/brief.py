@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -86,8 +86,16 @@ class BriefOut(BaseModel):
     model: str | None = None
     cost_usd: float = 0.0
     confidence: float = 0.0
+    command_view: dict[str, Any] | None = None
 
 
 class BriefGenerateOut(BaseModel):
     run_id: UUID
     status: str = "queued"
+
+
+class BriefActiveOut(BaseModel):
+    """The current brief run, or an explicit idle state."""
+
+    run_id: UUID | None = None
+    status: str = "idle"

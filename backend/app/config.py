@@ -42,16 +42,27 @@ class Settings(BaseSettings):
     login_attempt_limit: int = 5
     login_attempt_window_seconds: int = 900
 
+    # Scheduled daily brief (UTC)
+    daily_brief_hour_utc: int = 6
+
     # LLM / budget
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     daily_budget_usd: float = 25.0
     per_run_budget_usd: float = 1.20
     daily_opus_budget_usd: float = 8.0
+    llm_request_timeout_seconds: float = 35.0
+    brief_run_timeout_seconds: float = 120.0
 
     # EXA
     exa_api_key: str = ""
     exa_daily_call_cap: int = 500
+    exa_request_timeout_seconds: float = 20.0
+
+    # Free, publisher-operated RSS acquisition
+    free_rss_enabled: bool = True
+    free_rss_max_items_per_feed: int = 100
+    free_rss_request_timeout_seconds: float = 15.0
 
     # Meta Graph API
     meta_app_id: str = ""

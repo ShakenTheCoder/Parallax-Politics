@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.db import SessionLocal
+from app.intelligence.free_feeds import collect_free_feeds
 from app.intelligence.service import collect_source
 from app.models.intelligence import CollectionSource, CollectionSubscription
 from app.models.user import User
@@ -72,7 +73,7 @@ async def _run_subscription(subscription_id: UUID) -> bool:
         if not subscription or subscription.status != "active":
             return False
         actor = await db.get(User, subscription.created_by) if subscription.created_by else None
-        if not actor or actor.role not in {"admin", "superadmin"}:
+        if not actor or actor.role != "superadmin":
             await _record_failure(
                 subscription_id,
                 "Monitoring authorization is no longer held by an active administrator",
@@ -125,3 +126,17 @@ async def run_due_collections(ctx: dict[Any, Any]) -> int:
             completed=completed,
         )
     return completed
+
+
+async def run_free_feed_collection(ctx: dict[Any, Any]) -> int:
+    """Collect zero-credential publisher feeds and return new Signal count."""
+    del ctx
+    async with SessionLocal() as db:
+        result = await collect_free_feeds(db)
+        if result.errors:
+            log.warning(
+                "intelligence.free_feeds.partial",
+                feeds_checked=result.feeds_checked,
+                error_count=len(result.errors),
+            )
+        return result.signals_created

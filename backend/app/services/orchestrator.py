@@ -7,6 +7,7 @@ Two modes (selected by Run.meta.kind):
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from app.agents.base import AgentContext
 from app.agents.brief import BriefAgent
 from app.agents.pidaa import PIDAA
+from app.config import get_settings
 from app.db import session_scope
 from app.eventbus.bus import publish_event
 from app.llm.budget import BudgetExhaustedError
@@ -63,9 +65,20 @@ async def execute_run(run_id: UUID) -> None:
         if run_kind == "pidaa_build":
             await _run_pidaa_pipeline(run_id, ctx)
         elif run_kind == "brief_build":
-            await _run_brief_pipeline(run_id, ctx)
+            async with asyncio.timeout(get_settings().brief_run_timeout_seconds):
+                await _run_brief_pipeline(run_id, ctx)
         elif run_kind == "audience_build":
             await _run_audience_pipeline(run_id, ctx)
+        elif run_kind == "political_glossary_seed":
+            from app.services.political_glossary import seed_glossary
+            from app.services.wikidata_glossary import enrich_glossary_from_wikidata
+
+            await seed_glossary()
+            await enrich_glossary_from_wikidata()
+        elif run_kind == "political_glossary_refresh":
+            from app.services.political_glossary import refresh_figure
+
+            await refresh_figure(UUID(run_meta["figure_id"]), run_id)
         else:
             log.warning("orchestrator.unknown_kind", kind=run_kind)
             await _run_brief_pipeline(run_id, ctx)
@@ -78,6 +91,12 @@ async def execute_run(run_id: UUID) -> None:
         await _finalize_run(run_id, status=RunStatus.budget_exhausted, error=str(exc))
         await publish_event(channel, {"type": "run.budget_exhausted", "error": str(exc)})
 
+    except TimeoutError:
+        message = "Brief generation exceeded its two-minute live-analysis limit. Please retry."
+        log.warning("orchestrator.timed_out", run_id=str(run_id), kind=run_kind)
+        await _finalize_run(run_id, status=RunStatus.failed, error=message)
+        await publish_event(channel, {"type": "run.failed", "error": message})
+
     except Exception as exc:
         log.exception("orchestrator.failed", error=str(exc))
         await _finalize_run(run_id, status=RunStatus.failed, error=str(exc))
@@ -88,16 +107,15 @@ async def execute_run(run_id: UUID) -> None:
 
 
 async def _run_pidaa_pipeline(run_id: UUID, ctx: AgentContext) -> None:
-    """Build and persist the source-backed identity before dependent agents run."""
-    pidaa_result = await PIDAA().run(ctx)
-    await _persist_artifact(run_id, "principal_identity", pidaa_result)
-
-    # Automatically run competitor analysis after PIDAA
+    """Build the identity dossier, then derive the current competitor landscape."""
     from app.agents.competitor_analysis import CompetitorAnalysisAgent
 
+    pidaa_result = await PIDAA().run(ctx)
+    await _persist_artifact(run_id, "principal_identity", pidaa_result)
     ctx.upstream["PIDAA"] = pidaa_result
-    comp_result = await CompetitorAnalysisAgent().run(ctx)
-    await _persist_artifact(run_id, "competitor_analysis", comp_result)
+
+    competitor_result = await CompetitorAnalysisAgent().run(ctx)
+    await _persist_artifact(run_id, "competitor_analysis", competitor_result)
 
 
 async def _run_audience_pipeline(run_id: UUID, ctx: AgentContext) -> None:
