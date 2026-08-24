@@ -34,8 +34,6 @@ class Competitor(Base, UUIDPK, Timestamps):
     watch_status: Mapped[str] = mapped_column(
         String(40), nullable=False, default="polled_hypothetical"
     )
-    effective_from: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    effective_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)

@@ -66,8 +66,8 @@ async def run_daily_briefs(ctx: dict[Any, Any]) -> int:
     del ctx
     async with SessionLocal() as db:
         users = (
-            await db.execute(select(User).where(User.principal_id.is_not(None)))
-        ).scalars().all()
+            (await db.execute(select(User).where(User.principal_id.is_not(None)))).scalars().all()
+        )
         queued: list[UUID] = []
         for user in users:
             profile = await db.get(Profile, user.principal_id)

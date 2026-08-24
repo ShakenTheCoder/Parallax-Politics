@@ -125,12 +125,13 @@ class CollectionResult(BaseModel):
 
 
 class FreeFeedCollectionOut(BaseModel):
-    feeds_checked: int = Field(ge=0)
-    entries_seen: int = Field(ge=0)
-    signals_created: int = Field(ge=0)
-    duplicates: int = Field(ge=0)
-    unmatched: int = Field(ge=0)
-    opinions_created: int = Field(ge=0)
+    feeds_checked: int = Field(default=0, ge=0)
+    entries_seen: int = Field(default=0, ge=0)
+    signals_created: int = Field(default=0, ge=0)
+    duplicates: int = Field(default=0, ge=0)
+    unmatched: int = Field(default=0, ge=0)
+    appearances_created: int = Field(default=0, ge=0)
+    opinions_created: int = Field(default=0, ge=0)
     errors: list[str] = Field(default_factory=list)
 
 
@@ -243,6 +244,10 @@ class CommandViewOut(BaseModel):
 
 
 BriefImportance = Literal["critical", "high", "medium", "low", "unrated"]
+ActivityWindow = Literal["6h", "24h", "7d"]
+ActivityLayer = Literal[
+    "direct_appearance", "public_statement", "indirect_coverage", "public_reaction"
+]
 
 
 class BriefIdentityOut(BaseModel):
@@ -258,6 +263,7 @@ class BriefScoreOut(BaseModel):
 
 
 class BriefWatchlistRatingOut(BaseModel):
+    figure_id: UUID | None = None
     is_principal: bool = False
     rank: int | None = None
     name: str
@@ -265,6 +271,8 @@ class BriefWatchlistRatingOut(BaseModel):
     portrait_url: str | None = None
     score: float | None = None
     delta: float | None = None
+    monitoring_state: Literal["active", "quiet", "emerging"] = "quiet"
+    analyzed_appearances: int = Field(default=0, ge=0)
 
 
 class BriefAppearanceOut(BaseModel):
@@ -287,12 +295,91 @@ class BriefViewOut(BaseModel):
     identity: BriefIdentityOut
     score: BriefScoreOut
     watchlist: list[BriefWatchlistRatingOut]
+    activity_window: ActivityWindow = "24h"
+    activity_window_hours: int = 24
     appearances_window_hours: int = 36
     appearances: list[BriefAppearanceOut]
     latest_opinion: BriefMediaOpinionOut | None = None
     previous_opinions: list[BriefMediaOpinionOut] = Field(default_factory=list, max_length=3)
     data_status: Literal["live", "partial", "unavailable"]
     notice: str
+
+
+class PoliticalActivitySourceOut(BaseModel):
+    id: UUID
+    figure_id: UUID | None = None
+    figure_name: str | None = None
+    name: str
+    url: str
+    source_class: str
+    platform: str
+    access_method: str
+    publisher: str
+    status: str
+    schedule_minutes: int
+    rights: str
+    reliability_tier: str
+    last_checked_at: datetime | None = None
+    last_error: str | None = None
+
+
+class PoliticalActivityOut(BaseModel):
+    id: UUID
+    figure_id: UUID
+    person: str
+    portrait_url: str | None = None
+    occurred_at: datetime
+    published_at: datetime | None = None
+    appearance_type: str
+    evidence_layer: ActivityLayer
+    initiation: str
+    venue_program: str | None = None
+    topic: str
+    summary: str
+    direct_source_url: str
+    publisher: str
+    evidence_confidence: float = Field(ge=0, le=1)
+    source_links: list[dict[str, Any]] = Field(default_factory=list)
+    geography: dict[str, Any] = Field(default_factory=dict)
+
+
+class PoliticalActivityPersonOut(BaseModel):
+    figure_id: UUID
+    slug: str
+    person: str
+    position: str | None = None
+    portrait_url: str | None = None
+    monitoring_state: Literal["active", "quiet", "emerging"]
+    last_appearance_at: datetime | None = None
+    main_topic: str | None = None
+    current_count: int = Field(ge=0)
+    previous_count: int = Field(ge=0)
+    activity_change: Literal["up", "steady", "down"]
+    source_count: int = Field(ge=0)
+    confidence_label: Literal["high", "medium", "low", "unavailable"]
+    strongest_sources: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PoliticalActivityMonitorOut(BaseModel):
+    window: ActivityWindow
+    window_hours: int
+    generated_at: datetime
+    people_monitored: int
+    active_sources: int
+    source_gaps: int
+    llm_provider: str
+    llm_status: str
+    people: list[PoliticalActivityPersonOut]
+    recent_activity: list[PoliticalActivityOut]
+
+
+class PoliticalActivityCollectionOut(BaseModel):
+    sources_checked: int = 0
+    entries_seen: int = 0
+    activities_created: int = 0
+    activities_merged: int = 0
+    unmatched: int = 0
+    errors: list[str] = Field(default_factory=list)
 
 
 class AnalysisCenterOut(BaseModel):

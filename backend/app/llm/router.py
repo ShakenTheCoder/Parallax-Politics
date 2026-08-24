@@ -9,6 +9,8 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 
+from app.config import get_settings
+
 
 class ModelTier(enum.StrEnum):
     cheap = "cheap"  # extraction, ranking, classification
@@ -48,11 +50,52 @@ _REGISTRY: dict[ModelTier, ModelSpec] = {
     ModelTier.escalate: LLAMA_3_3_70B,
 }
 
+def _ollama_registry() -> dict[ModelTier, ModelSpec]:
+    settings = get_settings()
+    return {
+        ModelTier.cheap: ModelSpec(
+            id=settings.ollama_cheap_model,
+            tier=ModelTier.cheap,
+            input_per_mtok=0.0,
+            output_per_mtok=0.0,
+            cache_write_per_mtok=0.0,
+            cache_read_per_mtok=0.0,
+            family="ollama-local",
+            context_window=32_768,
+        ),
+        ModelTier.default: ModelSpec(
+            id=settings.ollama_default_model,
+            tier=ModelTier.default,
+            input_per_mtok=0.0,
+            output_per_mtok=0.0,
+            cache_write_per_mtok=0.0,
+            cache_read_per_mtok=0.0,
+            family="ollama-local",
+            context_window=8_192,
+        ),
+        ModelTier.escalate: ModelSpec(
+            id=settings.ollama_escalate_model,
+            tier=ModelTier.escalate,
+            input_per_mtok=0.0,
+            output_per_mtok=0.0,
+            cache_write_per_mtok=0.0,
+            cache_read_per_mtok=0.0,
+            family="ollama-local",
+            context_window=131_072,
+        ),
+    }
+
+
+def _registry(provider: str | None = None) -> dict[ModelTier, ModelSpec]:
+    active_provider = provider or get_settings().llm_provider
+    return _ollama_registry() if active_provider == "ollama" else _REGISTRY
+
+
 _BY_ID: dict[str, ModelSpec] = {m.id: m for m in _REGISTRY.values()}
 
 
-def pick_model(tier: ModelTier) -> ModelSpec:
-    return _REGISTRY[tier]
+def pick_model(tier: ModelTier, provider: str | None = None) -> ModelSpec:
+    return _registry(provider)[tier]
 
 
 def model_by_id(model_id: str) -> ModelSpec | None:

@@ -619,18 +619,26 @@ function PidaaLoadingBanner() {
 export default function BriefPage() {
   const [brief, setBrief] = useState<ThirtySecondBrief | null>(null);
   const [briefError, setBriefError] = useState("");
+  const [activityWindow, setActivityWindow] = useState<"6h" | "24h" | "7d">("24h");
+  const [windowLoading, setWindowLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    void api.getBriefView()
+    void api.getBriefView(activityWindow)
       .then((payload) => {
         if (!cancelled) setBrief(payload);
       })
       .catch((reason) => {
         if (!cancelled) setBriefError(reason instanceof Error ? reason.message : "Brief could not be loaded.");
-      });
+      })
+      .finally(() => { if (!cancelled) setWindowLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [activityWindow]);
+
+  const changeActivityWindow = (nextWindow: "6h" | "24h" | "7d") => {
+    setWindowLoading(true);
+    setActivityWindow(nextWindow);
+  };
 
   return (
     <main className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-10">
@@ -641,7 +649,7 @@ export default function BriefPage() {
         </div>
       )}
       {!brief && !briefError && <p className="mx-auto max-w-2xl py-20 text-center text-sm text-muted-foreground">Opening your latest Brief…</p>}
-      {brief && <BriefView brief={brief} />}
+      {brief && <BriefView brief={brief} onWindowChange={changeActivityWindow} windowLoading={windowLoading} />}
     </main>
   );
 }

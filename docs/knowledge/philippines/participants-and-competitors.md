@@ -40,6 +40,10 @@ For this product, competitors are figures who appear in the same named hypotheti
 
 The six initial figures are mutual competitors only within the Pulse Asia long-list context. That relationship must not be generalized to another office, election, or period.
 
+### Brief identity-resolution invariant
+
+The Brief derives membership from the versioned race watchlist for every signed-in principal; it does not trust account-specific, name-only competitor rows to define the set. Each displayed name is resolved by exact canonical name or reviewed alias to the Superadmin political-figure glossary. Current role and portrait come from that resolved glossary record, including alias pairs such as Benjamin/Benjie Magalong and Nicolas/Nic Torre. The signed-in figure replaces their watchlist row and is marked `is_principal`, so a person is never shown as their own competitor. Missing glossary matches remain visibly unverified rather than triggering fuzzy identity substitution.
+
 ## Poll record
 
 - Pollster: Pulse Asia Research, Inc.
@@ -51,4 +55,3 @@ The six initial figures are mutual competitors only within the Pulse Asia long-l
 - Question: choice for President if the May 2028 election were held during the survey period and the listed people were candidates
 - Result order: Sara Duterte 49%, Leni Robredo 26%, Raffy Tulfo 14%, Vince Dizon 1%, Benjamin Magalong 1%, Nicolas Torre III 0.1%
 - Layer: representative polling, excluded from Campaign Momentum
-

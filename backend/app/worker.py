@@ -6,7 +6,11 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.config import get_settings
-from app.intelligence.jobs import run_due_collections, run_free_feed_collection
+from app.intelligence.jobs import (
+    run_due_collections,
+    run_free_feed_collection,
+    run_political_activity_monitor,
+)
 from app.services.brief_runs import run_daily_briefs
 
 
@@ -26,6 +30,14 @@ class WorkerSettings:
             second=10,
             run_at_startup=True,
             timeout=180,
+            max_tries=1,
+        ),
+        cron(
+            run_political_activity_monitor,
+            minute={7, 22, 37, 52},
+            second=10,
+            run_at_startup=True,
+            timeout=900,
             max_tries=1,
         ),
         cron(

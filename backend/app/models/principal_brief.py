@@ -51,4 +51,6 @@ class PrincipalBrief(Base, UUIDPK, Timestamps):
 
     # Brief history is retained for auditability; archives are excluded from the
     # active product surface without destroying prior decision records.
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )

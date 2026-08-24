@@ -10,9 +10,7 @@ from app.schemas.intelligence import AnalysisCenterOut, ScenarioComparisonCreate
 def test_frozen_analysis_contract_contains_all_watchlist_figures() -> None:
     payload = AnalysisCenterOut.model_validate(analysis_center())
     assert len(payload.watchlist) == 6
-    assert {item["name"] for item in payload.watchlist} == {
-        item["name"] for item in WATCHLIST
-    }
+    assert {item["name"] for item in payload.watchlist} == {item["name"] for item in WATCHLIST}
     assert {item["watch_status"] for item in payload.watchlist} == {"polled_hypothetical"}
     assert payload.command_view.rank is None
     assert payload.command_view.rank_suppressed is True
@@ -44,7 +42,11 @@ def test_scenario_comparison_accepts_at_most_three_unique_variants() -> None:
         ScenarioComparisonCreate.model_validate(
             {
                 "variants": [
-                    {"id": str(index), "title": f"Variant {index}", "message": "A sufficiently long public message."}
+                    {
+                        "id": str(index),
+                        "title": f"Variant {index}",
+                        "message": "A sufficiently long public message.",
+                    }
                     for index in range(4)
                 ]
             }
@@ -53,8 +55,16 @@ def test_scenario_comparison_accepts_at_most_three_unique_variants() -> None:
         ScenarioComparisonCreate.model_validate(
             {
                 "variants": [
-                    {"id": "a", "title": "Variant one", "message": "A sufficiently long public message."},
-                    {"id": "a", "title": "Variant two", "message": "Another sufficiently long message."},
+                    {
+                        "id": "a",
+                        "title": "Variant one",
+                        "message": "A sufficiently long public message.",
+                    },
+                    {
+                        "id": "a",
+                        "title": "Variant two",
+                        "message": "Another sufficiently long message.",
+                    },
                 ]
             }
         )
@@ -62,7 +72,13 @@ def test_scenario_comparison_accepts_at_most_three_unique_variants() -> None:
 
 def test_scenario_fallback_is_qualitative_and_records_variance() -> None:
     result = compare_variants(
-        [{"id": "a", "title": "Service proof", "message": "Lead with a source-backed completed service outcome."}]
+        [
+            {
+                "id": "a",
+                "title": "Service proof",
+                "message": "Lead with a source-backed completed service outcome.",
+            }
+        ]
     )
     assert result["provider_status"] == "frozen_deterministic_fallback"
     assert result["cohorts"] == 8

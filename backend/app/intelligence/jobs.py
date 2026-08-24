@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.db import SessionLocal
+from app.intelligence.activity_monitor import collect_political_activity
 from app.intelligence.free_feeds import collect_free_feeds
 from app.intelligence.service import collect_source
 from app.models.intelligence import CollectionSource, CollectionSubscription
@@ -140,3 +141,17 @@ async def run_free_feed_collection(ctx: dict[Any, Any]) -> int:
                 error_count=len(result.errors),
             )
         return result.signals_created
+
+
+async def run_political_activity_monitor(ctx: dict[Any, Any]) -> int:
+    """Run the bounded glossary-wide source monitor and return new normalized records."""
+    del ctx
+    async with SessionLocal() as db:
+        result = await collect_political_activity(db)
+        if result.errors:
+            log.warning(
+                "intelligence.activity_monitor.partial",
+                sources_checked=result.sources_checked,
+                error_count=len(result.errors),
+            )
+        return result.activities_created

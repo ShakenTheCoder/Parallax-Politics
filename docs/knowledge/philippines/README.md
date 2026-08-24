@@ -62,6 +62,7 @@ No source means no authoritative claim. Conflicts remain visible and are not sil
 - [Political parties and coalitions](political-parties-and-coalitions.md)
 - [Media and data source catalog](media-and-data-source-catalog.md)
 - [Free data acquisition for the Brief](free-data-acquisition-for-brief.md)
+- [Political activity monitor source registry](political-activity-monitor-source-registry.md)
 - [Metrics and ranking methodology](metrics-and-ranking-methodology.md)
 - [Product blueprint and POC roadmap](product-blueprint-and-poc-roadmap.md)
 - [Third-party services and costs](third-party-services-and-costs.md)

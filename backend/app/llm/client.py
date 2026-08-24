@@ -56,15 +56,17 @@ class LLMResponse:
 _client: AsyncOpenAI | None = None
 
 
-def _get_nvidia_client() -> AsyncOpenAI:
+def _get_provider_client() -> AsyncOpenAI:
     global _client
     if _client is None:
         s = get_settings()
-        if not s.nvidia_api_key:
+        if s.llm_provider == "nvidia" and not s.nvidia_api_key:
             raise RuntimeError("NVIDIA_API_KEY is not set")
+        api_key = s.nvidia_api_key if s.llm_provider == "nvidia" else s.ollama_api_key
+        base_url = s.nvidia_base_url if s.llm_provider == "nvidia" else s.ollama_base_url
         _client = AsyncOpenAI(
-            api_key=s.nvidia_api_key,
-            base_url=s.nvidia_base_url,
+            api_key=api_key,
+            base_url=base_url,
             timeout=s.llm_request_timeout_seconds,
         )
     return _client
@@ -126,7 +128,7 @@ class NVIDIAClient:
         cache_system: bool = True,
     ) -> LLMResponse:
         """Run a single completion with budget guarding + telemetry."""
-        model = pick_model(tier)
+        model = pick_model(tier, provider=self.settings.llm_provider)
         run_id_str = str(run_id) if run_id else None
 
         # --- Pre-flight cost estimate --------------------------------------
@@ -241,7 +243,7 @@ class NVIDIAClient:
         temperature: float,
         stop_sequences: list[str] | None,
     ) -> tuple[Any, str]:
-        client = _get_nvidia_client()
+        client = _get_provider_client()
         used_id = model.id
 
         # Build OpenAI format messages with system message first

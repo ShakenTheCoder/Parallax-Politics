@@ -178,7 +178,7 @@ class BriefAgent(BaseAgent):
                         },
                     ],
                     tier=ModelTier.escalate,
-                max_tokens=1800,
+                    max_tokens=1800,
                     run_id=ctx.run_id,
                     json_mode=True,
                     temperature=0.3,
@@ -411,7 +411,12 @@ class BriefAgent(BaseAgent):
 
             # Do not manufacture defaults for incomplete model output. A brief is
             # publishable only when the model produced a complete, source-backed view.
-            if not action_card.what or not top_risk.label or not top_opportunity.label or not sources:
+            if (
+                not action_card.what
+                or not top_risk.label
+                or not top_opportunity.label
+                or not sources
+            ):
                 return None
 
             return {

@@ -78,6 +78,8 @@ The [GDELT Context 2.0 API](https://blog.gdeltproject.org/announcing-the-gdelt-c
 
 ### 3. YouTube: near-real-time appearances without scraping
 
+**Implementation status (2026-08-24):** the Brief worker now discovers channel-ID URLs from reviewed Superadmin glossary accounts, polls the official YouTube Atom feed every 15 minutes, and stores qualifying uploads as provenance-bearing `public_appearance` Signals. A qualifying owned-channel upload must contain direct first-person or interview/speech/event evidence in its published title or description. The Brief shows the publication time, attributable channel, direct video URL, and a bounded extractive description. Headline-only mentions and live blogs remain excluded.
+
 Create an evidence-reviewed registry of official watchlist, newsroom, TV, radio, House, Senate and government channel IDs. Then use the official [YouTube push-notification flow](https://developers.google.com/youtube/v3/guides/push_notifications): WebSub/PubSubHubbub posts an Atom notification when a registered channel uploads a video or changes its title/description. The topic is:
 
 ```text
@@ -388,4 +390,3 @@ The Brief is real only when all of the following are demonstrable:
 - The same source set, alias rules, normalization and time windows apply to every watchlist person.
 - Missing Meta, TikTok and X competitor coverage is visible and never treated as zero activity.
 - Every displayed point movement can be reproduced from retained component snapshots and the pinned method version.
-

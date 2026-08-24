@@ -5,6 +5,12 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from app.api.deps import AdminUser, CurrentUser, DbSession
+from app.intelligence.activity_monitor import (
+    activity_monitor,
+    collect_political_activity,
+    list_activity_sources,
+)
+from app.intelligence.activity_sources import bootstrap_activity_sources
 from app.intelligence.brief_view import build_brief_view
 from app.intelligence.fleet import AGENT_FLEET
 from app.intelligence.free_feeds import bootstrap_free_feeds, collect_free_feeds
@@ -27,6 +33,7 @@ from app.intelligence.service import (
     list_verdicts,
 )
 from app.schemas.intelligence import (
+    ActivityWindow,
     AgentFleetOut,
     AnalysisCenterOut,
     AppearanceListOut,
@@ -42,6 +49,9 @@ from app.schemas.intelligence import (
     FreeFeedCollectionOut,
     IntelligenceOverview,
     MethodologyOut,
+    PoliticalActivityCollectionOut,
+    PoliticalActivityMonitorOut,
+    PoliticalActivitySourceOut,
     ScenarioComparisonCreate,
     ScenarioComparisonOut,
     ScenarioCreate,
@@ -73,14 +83,51 @@ async def get_command_view(_user: CurrentUser) -> CommandViewOut:
 
 
 @router.get("/brief", response_model=BriefViewOut)
-async def get_brief_view(db: DbSession, user: CurrentUser) -> BriefViewOut:
+async def get_brief_view(
+    db: DbSession,
+    user: CurrentUser,
+    window: ActivityWindow = "24h",
+) -> BriefViewOut:
     """Return the mobile 30-second Brief without fixture substitution."""
-    return await build_brief_view(db, user)
+    return await build_brief_view(db, user, activity_window=window)
 
 
 @router.get("/analysis", response_model=AnalysisCenterOut)
 async def get_analysis_center(_user: CurrentUser) -> AnalysisCenterOut:
     return AnalysisCenterOut.model_validate(analysis_center())
+
+
+@router.get("/activity-monitor", response_model=PoliticalActivityMonitorOut)
+async def get_activity_monitor(
+    db: DbSession,
+    _admin: AdminUser,
+    window: ActivityWindow = "24h",
+) -> PoliticalActivityMonitorOut:
+    """Return the superadmin's glossary-wide structured activity picture."""
+    return await activity_monitor(db, window=window)
+
+
+@router.get("/activity-monitor/sources", response_model=list[PoliticalActivitySourceOut])
+async def get_activity_sources(
+    db: DbSession, _admin: AdminUser
+) -> list[PoliticalActivitySourceOut]:
+    return await list_activity_sources(db)
+
+
+@router.post("/activity-monitor/sources/bootstrap", response_model=list[PoliticalActivitySourceOut])
+async def bootstrap_activity_source_registry(
+    db: DbSession, _admin: AdminUser
+) -> list[PoliticalActivitySourceOut]:
+    """Idempotently synchronize the reviewed glossary and publication source catalog."""
+    await bootstrap_activity_sources(db)
+    await db.commit()
+    return await list_activity_sources(db)
+
+
+@router.post("/activity-monitor/collect", response_model=PoliticalActivityCollectionOut)
+async def run_activity_monitor(db: DbSession, _admin: AdminUser) -> PoliticalActivityCollectionOut:
+    """Run one bounded allowlisted Scrapling/feed acquisition and Ollama analysis batch."""
+    return await collect_political_activity(db, max_analyses=2)
 
 
 @router.get("/appearances", response_model=AppearanceListOut)
@@ -133,9 +180,7 @@ async def get_sources(db: DbSession, _admin: AdminUser) -> list[CollectionSource
 
 
 @router.post("/sources/free/bootstrap", response_model=list[CollectionSourceOut])
-async def bootstrap_free_sources(
-    db: DbSession, admin: AdminUser
-) -> list[CollectionSourceOut]:
+async def bootstrap_free_sources(db: DbSession, admin: AdminUser) -> list[CollectionSourceOut]:
     """Register the curated zero-credential Philippine publisher feeds."""
     return await bootstrap_free_feeds(db, admin)
 

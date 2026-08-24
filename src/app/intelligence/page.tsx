@@ -16,6 +16,7 @@ import {
   StrategyVerdict,
 } from "@/lib/api";
 import { useSession } from "@/lib/SessionContext";
+import PoliticalActivityMonitorView from "@/components/intelligence/PoliticalActivityMonitor";
 
 type View = "overview" | "scenarios" | "sources" | "fleet";
 type SourceAuthority = "official_api" | "licensed_feed" | "public_web" | "representative_poll" | "consented_panel";
@@ -87,7 +88,7 @@ function ReviewControls({ verdict, onReviewed }: { verdict: StrategyVerdict; onR
 }
 
 export default function IntelligencePage() {
-  return <main className="flex-1" aria-label="Analysis Center" />;
+  return <PoliticalActivityMonitorView />;
 }
 
 export function LegacyIntelligencePage() {

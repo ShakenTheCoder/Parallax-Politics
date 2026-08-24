@@ -14,6 +14,7 @@ from app.models.intelligence import (
     StrategyVerdict,
 )
 from app.models.llm_call import LLMCall
+from app.models.political_activity import PoliticalActivity, PoliticalActivitySource
 from app.models.political_figure import PoliticalFigure, PoliticalFigureSnapshot
 from app.models.principal_brief import PrincipalBrief
 from app.models.principal_identity import PrincipalIdentity
@@ -34,6 +35,8 @@ __all__ = [
     "IntelligenceScenario",
     "IntelligenceSnapshot",
     "LLMCall",
+    "PoliticalActivity",
+    "PoliticalActivitySource",
     "PoliticalFigure",
     "PoliticalFigureSnapshot",
     "PrincipalBrief",

@@ -158,4 +158,3 @@ def deduplicate_signals(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         result.append(record)
     return result
-

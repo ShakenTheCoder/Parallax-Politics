@@ -13,19 +13,21 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.competitor import Competitor
+from app.intelligence.activity_monitor import monitoring_state, window_hours
+from app.intelligence.brief_watchlist import resolve_brief_watchlist
 from app.models.intelligence import IntelligenceSnapshot, SignalEvent
+from app.models.political_activity import PoliticalActivity
 from app.models.principal_identity import PrincipalIdentity
 from app.models.profile import Profile
 from app.models.user import User
 from app.schemas.intelligence import (
+    ActivityWindow,
     BriefAppearanceOut,
     BriefIdentityOut,
     BriefImportance,
     BriefMediaOpinionOut,
     BriefScoreOut,
     BriefViewOut,
-    BriefWatchlistRatingOut,
 )
 
 _APPEARANCE_EVENT_TYPES = {
@@ -51,6 +53,9 @@ def _integer(value: Any) -> int | None:
 
 
 def _caption(signal: SignalEvent) -> str:
+    appearance_description = (signal.provenance or {}).get("appearance_description")
+    if isinstance(appearance_description, str) and appearance_description.strip():
+        return appearance_description.strip()
     if signal.title and signal.title.strip():
         return signal.title.strip()
     content = " ".join(signal.content.split())
@@ -63,9 +68,7 @@ def _opinion(snapshot: IntelligenceSnapshot) -> BriefMediaOpinionOut | None:
     if not isinstance(summary, str) or not summary.strip() or not snapshot.evidence:
         return None
     raw_importance = str(payload.get("importance") or "").lower()
-    importance: BriefImportance = (
-        raw_importance if raw_importance in _IMPORTANCE else "unrated"
-    )  # type: ignore[assignment]
+    importance: BriefImportance = raw_importance if raw_importance in _IMPORTANCE else "unrated"  # type: ignore[assignment]
     return BriefMediaOpinionOut(
         id=str(snapshot.id),
         summary=summary.strip(),
@@ -75,22 +78,9 @@ def _opinion(snapshot: IntelligenceSnapshot) -> BriefMediaOpinionOut | None:
     )
 
 
-async def _profile_visuals(
-    db: AsyncSession, profile_ids: set[Any]
-) -> dict[Any, tuple[Profile, PrincipalIdentity | None]]:
-    if not profile_ids:
-        return {}
-    rows = (
-        await db.execute(
-            select(Profile, PrincipalIdentity)
-            .outerjoin(PrincipalIdentity, PrincipalIdentity.profile_id == Profile.id)
-            .where(Profile.id.in_(profile_ids))
-        )
-    ).all()
-    return {profile.id: (profile, identity) for profile, identity in rows}
-
-
-async def build_brief_view(db: AsyncSession, user: User) -> BriefViewOut:
+async def build_brief_view(
+    db: AsyncSession, user: User, *, activity_window: ActivityWindow = "24h"
+) -> BriefViewOut:
     if not user.principal_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -123,64 +113,51 @@ async def build_brief_view(db: AsyncSession, user: User) -> BriefViewOut:
         updated_at=momentum.effective_at if momentum_payload else None,
     )
 
-    competitors = (
+    watchlist = await resolve_brief_watchlist(
+        db,
+        principal=principal,
+        principal_identity=principal_identity,
+        momentum_payload=momentum_payload,
+    )
+    selected_hours = window_hours(activity_window)
+    activity_now = datetime.now(UTC)
+    current_start = activity_now - timedelta(hours=selected_hours)
+    previous_start = current_start - timedelta(hours=selected_hours)
+    figure_ids = [row.figure_id for row in watchlist if row.figure_id]
+    activity_rows = (
         (
             await db.execute(
-                select(Competitor)
-                .where(
-                    Competitor.profile_id == principal.id,
-                    Competitor.effective_to.is_(None),
+                select(PoliticalActivity).where(
+                    PoliticalActivity.figure_id.in_(figure_ids),
+                    PoliticalActivity.evidence_layer.in_({"direct_appearance", "public_statement"}),
+                    PoliticalActivity.occurred_at >= previous_start,
+                    PoliticalActivity.occurred_at <= activity_now,
                 )
-                .order_by(Competitor.name)
             )
         )
         .scalars()
         .all()
+        if figure_ids
+        else []
     )
-    linked_ids = {
-        competitor.competitor_profile_id
-        for competitor in competitors
-        if competitor.competitor_profile_id is not None
-    }
-    visuals = await _profile_visuals(db, linked_ids)
-    ratings_by_name = {
-        str(item.get("name", "")).casefold(): item
-        for item in momentum_payload.get("watchlist", [])
-        if isinstance(item, dict) and item.get("name")
-    }
-    watchlist: list[BriefWatchlistRatingOut] = [
-        BriefWatchlistRatingOut(
-            is_principal=True,
-            rank=_integer(momentum_payload.get("rank")),
-            name=principal.full_name,
-            position=principal.role_title,
-            portrait_url=principal_identity.profile_image_url if principal_identity else None,
-            score=score.value,
-            delta=score.delta,
+    for row in watchlist:
+        if not row.figure_id:
+            continue
+        current_count = sum(
+            item.figure_id == row.figure_id and item.occurred_at >= current_start
+            for item in activity_rows
         )
-    ]
-    for competitor in competitors:
-        linked = visuals.get(competitor.competitor_profile_id)
-        linked_profile = linked[0] if linked else None
-        linked_identity = linked[1] if linked else None
-        name = linked_profile.full_name if linked_profile else competitor.name
-        rating = ratings_by_name.get(name.casefold(), {})
-        watchlist.append(
-            BriefWatchlistRatingOut(
-                is_principal=False,
-                rank=_integer(rating.get("rank")),
-                name=name,
-                position=linked_profile.role_title if linked_profile else None,
-                portrait_url=linked_identity.profile_image_url if linked_identity else None,
-                score=_number(rating.get("score")),
-                delta=_number(rating.get("delta")),
-            )
+        previous_count = sum(
+            item.figure_id == row.figure_id and item.occurred_at < current_start
+            for item in activity_rows
         )
-    watchlist.sort(key=lambda item: (item.rank is None, item.rank or 10_000, item.name))
+        row.analyzed_appearances = current_count
+        row.monitoring_state = monitoring_state(current_count, previous_count)  # type: ignore[assignment]
+    principal_row = next(item for item in watchlist if item.is_principal)
 
     cutoff = datetime.now(UTC) - timedelta(hours=36)
     appeared_at = func.coalesce(SignalEvent.published_at, SignalEvent.observed_at)
-    appearance_rows = (
+    signal_appearance_rows = (
         (
             await db.execute(
                 select(SignalEvent)
@@ -205,8 +182,41 @@ async def build_brief_view(db: AsyncSession, user: User) -> BriefViewOut:
             source_url=signal.url,
             appeared_at=signal.published_at or signal.observed_at,
         )
-        for signal in appearance_rows
+        for signal in signal_appearance_rows
     ]
+    activity_appearance_rows = (
+        (
+            await db.execute(
+                select(PoliticalActivity)
+                .where(
+                    PoliticalActivity.figure_id == principal_row.figure_id,
+                    PoliticalActivity.evidence_layer.in_({"direct_appearance", "public_statement"}),
+                    PoliticalActivity.occurred_at >= cutoff,
+                    PoliticalActivity.occurred_at <= datetime.now(UTC),
+                )
+                .order_by(PoliticalActivity.occurred_at.desc())
+                .limit(20)
+            )
+        )
+        .scalars()
+        .all()
+        if principal_row.figure_id
+        else []
+    )
+    seen_urls = {item.source_url for item in appearances}
+    appearances.extend(
+        BriefAppearanceOut(
+            id=str(activity.id),
+            caption=activity.summary,
+            source_name=activity.publisher,
+            source_url=activity.direct_source_url,
+            appeared_at=activity.occurred_at,
+        )
+        for activity in activity_appearance_rows
+        if activity.direct_source_url not in seen_urls
+    )
+    appearances.sort(key=lambda item: item.appeared_at, reverse=True)
+    appearances = appearances[:20]
 
     opinion_rows = (
         (
@@ -232,11 +242,13 @@ async def build_brief_view(db: AsyncSession, user: User) -> BriefViewOut:
     return BriefViewOut(
         identity=BriefIdentityOut(
             name=principal.full_name,
-            position=principal.role_title,
-            portrait_url=principal_identity.profile_image_url if principal_identity else None,
+            position=principal_row.position,
+            portrait_url=principal_row.portrait_url,
         ),
         score=score,
         watchlist=watchlist,
+        activity_window=activity_window,
+        activity_window_hours=selected_hours,
         appearances=appearances,
         latest_opinion=opinions[0] if opinions else None,
         previous_opinions=opinions[1:4],

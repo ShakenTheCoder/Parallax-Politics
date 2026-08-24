@@ -500,6 +500,7 @@ export type CommandView = {
 };
 
 export type BriefImportance = "critical" | "high" | "medium" | "low" | "unrated";
+export type ActivityWindow = "6h" | "24h" | "7d";
 
 export type ThirtySecondBrief = {
   identity: {
@@ -513,6 +514,7 @@ export type ThirtySecondBrief = {
     updated_at: string | null;
   };
   watchlist: {
+    figure_id: string | null;
     is_principal: boolean;
     rank: number | null;
     name: string;
@@ -520,7 +522,11 @@ export type ThirtySecondBrief = {
     portrait_url: string | null;
     score: number | null;
     delta: number | null;
+    monitoring_state: "active" | "quiet" | "emerging";
+    analyzed_appearances: number;
   }[];
+  activity_window: ActivityWindow;
+  activity_window_hours: number;
   appearances_window_hours: number;
   appearances: {
     id: string;
@@ -545,6 +551,81 @@ export type ThirtySecondBrief = {
   }[];
   data_status: "live" | "partial" | "unavailable";
   notice: string;
+};
+
+export type PoliticalActivitySource = {
+  id: string;
+  figure_id: string | null;
+  figure_name: string | null;
+  name: string;
+  url: string;
+  source_class: string;
+  platform: string;
+  access_method: string;
+  publisher: string;
+  status: string;
+  schedule_minutes: number;
+  rights: string;
+  reliability_tier: string;
+  last_checked_at: string | null;
+  last_error: string | null;
+};
+
+export type PoliticalActivity = {
+  id: string;
+  figure_id: string;
+  person: string;
+  portrait_url: string | null;
+  occurred_at: string;
+  published_at: string | null;
+  appearance_type: string;
+  evidence_layer: "direct_appearance" | "public_statement" | "indirect_coverage" | "public_reaction";
+  initiation: string;
+  venue_program: string | null;
+  topic: string;
+  summary: string;
+  direct_source_url: string;
+  publisher: string;
+  evidence_confidence: number;
+  source_links: { url?: string; publisher?: string; published_at?: string | null; source_class?: string }[];
+  geography: Record<string, unknown>;
+};
+
+export type PoliticalActivityMonitor = {
+  window: ActivityWindow;
+  window_hours: number;
+  generated_at: string;
+  people_monitored: number;
+  active_sources: number;
+  source_gaps: number;
+  llm_provider: string;
+  llm_status: string;
+  people: {
+    figure_id: string;
+    slug: string;
+    person: string;
+    position: string | null;
+    portrait_url: string | null;
+    monitoring_state: "active" | "quiet" | "emerging";
+    last_appearance_at: string | null;
+    main_topic: string | null;
+    current_count: number;
+    previous_count: number;
+    activity_change: "up" | "steady" | "down";
+    source_count: number;
+    confidence_label: "high" | "medium" | "low" | "unavailable";
+    strongest_sources: { publisher: string; records: number }[];
+  }[];
+  recent_activity: PoliticalActivity[];
+};
+
+export type PoliticalActivityCollection = {
+  sources_checked: number;
+  entries_seen: number;
+  activities_created: number;
+  activities_merged: number;
+  unmatched: number;
+  errors: string[];
 };
 
 export type PollRecord = {
@@ -741,8 +822,20 @@ export const api = {
   async getIntelligenceOverview(): Promise<IntelligenceOverview> {
     return request<IntelligenceOverview>("/api/v1/intelligence/overview");
   },
-  async getBriefView(): Promise<ThirtySecondBrief> {
-    return request<ThirtySecondBrief>("/api/v1/intelligence/brief");
+  async getBriefView(window: ActivityWindow = "24h"): Promise<ThirtySecondBrief> {
+    return request<ThirtySecondBrief>(`/api/v1/intelligence/brief?window=${window}`);
+  },
+  async getPoliticalActivityMonitor(window: ActivityWindow = "24h"): Promise<PoliticalActivityMonitor> {
+    return request<PoliticalActivityMonitor>(`/api/v1/intelligence/activity-monitor?window=${window}`, { saAuth: true });
+  },
+  async listPoliticalActivitySources(): Promise<PoliticalActivitySource[]> {
+    return request<PoliticalActivitySource[]>("/api/v1/intelligence/activity-monitor/sources", { saAuth: true });
+  },
+  async bootstrapPoliticalActivitySources(): Promise<PoliticalActivitySource[]> {
+    return request<PoliticalActivitySource[]>("/api/v1/intelligence/activity-monitor/sources/bootstrap", { method: "POST", saAuth: true });
+  },
+  async collectPoliticalActivity(): Promise<PoliticalActivityCollection> {
+    return request<PoliticalActivityCollection>("/api/v1/intelligence/activity-monitor/collect", { method: "POST", saAuth: true });
   },
   async getAnalysisCenter(): Promise<AnalysisCenter> {
     return request<AnalysisCenter>("/api/v1/intelligence/analysis");

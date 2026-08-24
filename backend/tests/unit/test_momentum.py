@@ -81,4 +81,3 @@ def test_deduplication_uses_subject_and_canonical_identity() -> None:
     result = deduplicate_signals(rows)
     assert len(result) == 3
     assert [row["subject_id"] for row in result] == ["a", "b", "a"]
-

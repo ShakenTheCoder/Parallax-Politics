@@ -2,9 +2,13 @@ from app.llm.router import LLAMA_3_3_70B, ModelTier, estimate_cost_usd, pick_mod
 
 
 def test_pick_model_tiers():
-    assert pick_model(ModelTier.cheap) is LLAMA_3_3_70B
-    assert pick_model(ModelTier.default) is LLAMA_3_3_70B
-    assert pick_model(ModelTier.escalate) is LLAMA_3_3_70B
+    assert pick_model(ModelTier.cheap, provider="nvidia") is LLAMA_3_3_70B
+    assert pick_model(ModelTier.default, provider="nvidia") is LLAMA_3_3_70B
+    assert pick_model(ModelTier.escalate, provider="nvidia") is LLAMA_3_3_70B
+
+
+def test_ollama_provider_uses_the_local_registry():
+    assert pick_model(ModelTier.cheap, provider="ollama").family == "ollama-local"
 
 
 def test_cost_estimate_known_rates():

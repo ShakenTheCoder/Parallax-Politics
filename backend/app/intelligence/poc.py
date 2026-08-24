@@ -19,22 +19,9 @@ from app.intelligence.momentum import (
     publishable_rank,
     seven_day_delta,
 )
+from app.intelligence.watchlist import PULSE_ASIA_URL, WATCHLIST
 
 EFFECTIVE_AT = datetime(2026, 8, 24, 9, 0, tzinfo=UTC)
-PULSE_ASIA_URL = (
-    "https://pulseasia.ph/wp-content/uploads/2026/07/"
-    "MR2-UB2026-2-MR-on-the-May-2028-Elections-Final.pdf"
-)
-
-WATCHLIST: list[dict[str, Any]] = [
-    {"slug": "sara-duterte", "name": "Sara Duterte", "office": "Vice-President of the Philippines", "poll": 49.0, "strongest_channel": "Public video", "issue": "Executive leadership"},
-    {"slug": "leni-robredo", "name": "Leni Robredo", "office": "Mayor of Naga City", "poll": 26.0, "strongest_channel": "Earned media", "issue": "Good governance"},
-    {"slug": "raffy-tulfo", "name": "Raffy Tulfo", "office": "Senator of the Philippines", "poll": 14.0, "strongest_channel": "YouTube", "issue": "Public service"},
-    {"slug": "vince-dizon", "name": "Vince Dizon", "office": "DPWH Secretary at poll publication", "poll": 1.0, "strongest_channel": "News", "issue": "Infrastructure delivery"},
-    {"slug": "benjamin-magalong", "name": "Benjamin Magalong", "office": "Baguio City Mayor at poll publication", "poll": 1.0, "strongest_channel": "Local news", "issue": "Local governance"},
-    {"slug": "nicolas-torre-iii", "name": "Nicolas Torre III", "office": "MMDA General Manager at poll publication", "poll": 0.1, "strongest_channel": "News", "issue": "Metropolitan operations"},
-]
-
 EVIDENCE: list[dict[str, Any]] = [
     {
         "id": "ev-pulse-jul-2026",
@@ -165,11 +152,41 @@ def command_view() -> dict[str, Any]:
         "model_version": MOMENTUM_VERSION,
         "headline": "Public-video attention is the largest modeled contributor, but rank is withheld because competitor-wide social and search feeds are incomplete.",
         "tiles": [
-            {"key": "attention", "label": "Attention share", "value": "31.8%", "delta": "+3.6 pts", "evidence_ids": []},
-            {"key": "favorability", "label": "Net favorability", "value": "+18", "delta": "+2.1 pts", "evidence_ids": []},
-            {"key": "earned", "label": "Earned visibility", "value": "69 / 100", "delta": "+4.4", "evidence_ids": []},
-            {"key": "search", "label": "Search interest", "value": "67 / 100", "delta": "+5.2", "evidence_ids": []},
-            {"key": "appearance", "label": "Strongest message", "value": "Service delivery", "delta": "24h lift +8%", "evidence_ids": []},
+            {
+                "key": "attention",
+                "label": "Attention share",
+                "value": "31.8%",
+                "delta": "+3.6 pts",
+                "evidence_ids": [],
+            },
+            {
+                "key": "favorability",
+                "label": "Net favorability",
+                "value": "+18",
+                "delta": "+2.1 pts",
+                "evidence_ids": [],
+            },
+            {
+                "key": "earned",
+                "label": "Earned visibility",
+                "value": "69 / 100",
+                "delta": "+4.4",
+                "evidence_ids": [],
+            },
+            {
+                "key": "search",
+                "label": "Search interest",
+                "value": "67 / 100",
+                "delta": "+5.2",
+                "evidence_ids": [],
+            },
+            {
+                "key": "appearance",
+                "label": "Strongest message",
+                "value": "Service delivery",
+                "delta": "24h lift +8%",
+                "evidence_ids": [],
+            },
         ],
         "opportunity": "Convert attention into one specific, source-backed service-delivery message and measure equal-age response.",
         "risk": "The apparent movement may be platform-skewed while Meta and TikTok competitor coverage remains incomplete.",
@@ -198,8 +215,16 @@ def analysis_center() -> dict[str, Any]:
         },
         "command_view": command,
         "momentum_components": [
-            {"key": key, "label": key.replace("_", " ").title(), "weight": weight, "score": value, "delta": round((value - 60) / 5, 1)}
-            for (key, weight), value in zip(COMPONENT_WEIGHTS.items(), [72, 66, 61, 69, 67, 63], strict=True)
+            {
+                "key": key,
+                "label": key.replace("_", " ").title(),
+                "weight": weight,
+                "score": value,
+                "delta": round((value - 60) / 5, 1),
+            }
+            for (key, weight), value in zip(
+                COMPONENT_WEIGHTS.items(), [72, 66, 61, 69, 67, 63], strict=True
+            )
         ],
         "timeline": _timeline(),
         "watchlist": [
@@ -215,16 +240,62 @@ def analysis_center() -> dict[str, Any]:
             for index, figure in enumerate(WATCHLIST)
         ],
         "channels": [
-            {"name": "News / RSS", "score": 69, "coverage": 0.78, "comparison": "Eligible public reporting; clustered by story"},
-            {"name": "YouTube", "score": 66, "coverage": 0.61, "comparison": "Equal-age public video snapshots"},
-            {"name": "X", "score": None, "coverage": 0.0, "comparison": "Credential and $50 cap required"},
-            {"name": "Facebook / Instagram", "score": None, "coverage": 0.22, "comparison": "Owned authorization absent; competitor-wide access incomplete"},
-            {"name": "TikTok", "score": None, "coverage": 0.0, "comparison": "Licensed or authorized access required"},
+            {
+                "name": "News / RSS",
+                "score": 69,
+                "coverage": 0.78,
+                "comparison": "Eligible public reporting; clustered by story",
+            },
+            {
+                "name": "YouTube",
+                "score": 66,
+                "coverage": 0.61,
+                "comparison": "Equal-age public video snapshots",
+            },
+            {
+                "name": "X",
+                "score": None,
+                "coverage": 0.0,
+                "comparison": "Credential and $50 cap required",
+            },
+            {
+                "name": "Facebook / Instagram",
+                "score": None,
+                "coverage": 0.22,
+                "comparison": "Owned authorization absent; competitor-wide access incomplete",
+            },
+            {
+                "name": "TikTok",
+                "score": None,
+                "coverage": 0.0,
+                "comparison": "Licensed or authorized access required",
+            },
         ],
         "narratives": [
-            {"name": "Service delivery", "stage": "accelerating", "velocity": 18.0, "owner": "mixed", "source_diversity": 3.2, "evidence_ids": []},
-            {"name": "Good governance", "stage": "persistent", "velocity": 7.0, "owner": "Leni Robredo", "source_diversity": 2.7, "evidence_ids": ["ev-naga-mayor"]},
-            {"name": "Public assistance", "stage": "persistent", "velocity": 9.0, "owner": "Raffy Tulfo", "source_diversity": 2.4, "evidence_ids": ["ev-tulfo-senate"]},
+            {
+                "name": "Service delivery",
+                "stage": "accelerating",
+                "velocity": 18.0,
+                "owner": "mixed",
+                "source_diversity": 3.2,
+                "evidence_ids": [],
+            },
+            {
+                "name": "Good governance",
+                "stage": "persistent",
+                "velocity": 7.0,
+                "owner": "Leni Robredo",
+                "source_diversity": 2.7,
+                "evidence_ids": ["ev-naga-mayor"],
+            },
+            {
+                "name": "Public assistance",
+                "stage": "persistent",
+                "velocity": 9.0,
+                "owner": "Raffy Tulfo",
+                "source_diversity": 2.4,
+                "evidence_ids": ["ev-tulfo-senate"],
+            },
         ],
         "appearances": [
             {
@@ -233,7 +304,11 @@ def analysis_center() -> dict[str, Any]:
                 "figure": "Sara Duterte",
                 "occurred_at": "2026-08-20T02:00:00+00:00",
                 "source_status": "transcript_pending",
-                "topics": [{"label": "Service delivery", "share": 0.46}, {"label": "National leadership", "share": 0.32}, {"label": "Other", "share": 0.22}],
+                "topics": [
+                    {"label": "Service delivery", "share": 0.46},
+                    {"label": "National leadership", "share": 0.32},
+                    {"label": "Other", "share": 0.22},
+                ],
                 "message_consistency": 0.74,
                 "quote_pickup": 4,
                 "lift": {"6h": 3.0, "24h": 8.0, "72h": 5.0},
@@ -259,14 +334,56 @@ def analysis_center() -> dict[str, Any]:
             "threshold": RANK_COVERAGE_THRESHOLD,
             "rank_suppressed": True,
             "families": [
-                {"name": "News / RSS", "status": "partial", "score": 0.78, "freshness": "frozen Aug 24", "action": "Enable scheduled feeds"},
-                {"name": "Public video", "status": "partial", "score": 0.61, "freshness": "frozen Aug 24", "action": "Configure YouTube key"},
-                {"name": "Search", "status": "missing", "score": 0.0, "freshness": None, "action": "Import timestamped Trends comparison"},
-                {"name": "Polling", "status": "current", "score": 1.0, "freshness": "published Jul 22", "action": "Monitor new comparable releases"},
-                {"name": "Official records", "status": "partial", "score": 0.72, "freshness": "checked Aug 24", "action": "Finish four profile verifications"},
-                {"name": "Appearances", "status": "partial", "score": 0.35, "freshness": "transcript pending", "action": "Load approved recordings/transcripts"},
+                {
+                    "name": "News / RSS",
+                    "status": "partial",
+                    "score": 0.78,
+                    "freshness": "frozen Aug 24",
+                    "action": "Enable scheduled feeds",
+                },
+                {
+                    "name": "Public video",
+                    "status": "partial",
+                    "score": 0.61,
+                    "freshness": "frozen Aug 24",
+                    "action": "Configure YouTube key",
+                },
+                {
+                    "name": "Search",
+                    "status": "missing",
+                    "score": 0.0,
+                    "freshness": None,
+                    "action": "Import timestamped Trends comparison",
+                },
+                {
+                    "name": "Polling",
+                    "status": "current",
+                    "score": 1.0,
+                    "freshness": "published Jul 22",
+                    "action": "Monitor new comparable releases",
+                },
+                {
+                    "name": "Official records",
+                    "status": "partial",
+                    "score": 0.72,
+                    "freshness": "checked Aug 24",
+                    "action": "Finish four profile verifications",
+                },
+                {
+                    "name": "Appearances",
+                    "status": "partial",
+                    "score": 0.35,
+                    "freshness": "transcript pending",
+                    "action": "Load approved recordings/transcripts",
+                },
             ],
-            "missing_sources": ["X", "Google Trends", "TikTok", "authorized Meta analytics", "four official profile refreshes"],
+            "missing_sources": [
+                "X",
+                "Google Trends",
+                "TikTok",
+                "authorized Meta analytics",
+                "four official profile refreshes",
+            ],
         },
         "evidence": EVIDENCE,
         "provider_status": {
@@ -278,7 +395,14 @@ def analysis_center() -> dict[str, Any]:
 
 
 def compare_variants(variants: list[dict[str, str]]) -> dict[str, Any]:
-    criteria = ["clarity", "relevance", "credibility", "objection_risk", "recall", "sharing_inclination"]
+    criteria = [
+        "clarity",
+        "relevance",
+        "credibility",
+        "objection_risk",
+        "recall",
+        "sharing_inclination",
+    ]
     results: list[dict[str, Any]] = []
     for variant in variants:
         digest = sha256((variant["title"] + variant["message"]).encode()).digest()
@@ -307,4 +431,3 @@ def compare_variants(variants: list[dict[str, str]]) -> dict[str, Any]:
             "A live model run requires a configured provider and must retain all three samples per cohort.",
         ],
     }
-

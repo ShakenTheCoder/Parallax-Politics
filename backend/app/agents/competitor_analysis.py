@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.base import AgentContext, BaseAgent
 from app.db import session_scope
-from app.intelligence.poc import PULSE_ASIA_URL, WATCHLIST
+from app.intelligence.watchlist import PULSE_ASIA_URL, WATCHLIST
 from app.llm.router import ModelTier
 from app.models.competitor import Competitor
 from app.schemas.agents import AgentResult

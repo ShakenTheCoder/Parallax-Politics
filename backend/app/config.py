@@ -46,8 +46,15 @@ class Settings(BaseSettings):
     daily_brief_hour_utc: int = 6
 
     # LLM / budget
+    llm_provider: Literal["nvidia", "ollama"] = "nvidia"
     nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    ollama_base_url: str = "http://127.0.0.1:11434/v1"
+    ollama_api_key: str = "ollama"
+    ollama_cheap_model: str = "gpt-oss:20b"
+    ollama_activity_model: str = "llama3:latest"
+    ollama_default_model: str = "gpt-oss:20b"
+    ollama_escalate_model: str = "gpt-oss:20b"
     daily_budget_usd: float = 25.0
     per_run_budget_usd: float = 1.20
     daily_opus_budget_usd: float = 8.0
@@ -63,6 +70,9 @@ class Settings(BaseSettings):
     free_rss_enabled: bool = True
     free_rss_max_items_per_feed: int = 100
     free_rss_request_timeout_seconds: float = 15.0
+    free_youtube_feeds_enabled: bool = True
+    free_youtube_max_items_per_feed: int = 15
+    political_activity_max_llm_items_per_run: int = 12
 
     # Meta Graph API
     meta_app_id: str = ""

@@ -13,9 +13,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.intelligence.appearance_classifier import classify_publisher_appearance
+from app.intelligence.brief_watchlist import normalize_public_name, public_name_keys
+from app.intelligence.official_youtube import collect_official_youtube_appearances
 from app.intelligence.policy import CollectionPolicyError
 from app.intelligence.rss import FeedItem, PublisherFeedCollector
 from app.models.intelligence import CollectionSource, IntelligenceSnapshot, SignalEvent
+from app.models.political_figure import PoliticalFigure
 from app.models.profile import Profile
 from app.models.source import Source
 from app.models.user import User
@@ -40,6 +44,7 @@ class _Counters:
     signals_created: int = 0
     duplicates: int = 0
     unmatched: int = 0
+    appearances_created: int = 0
     opinions_created: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -82,6 +87,11 @@ DEFAULT_FREE_FEEDS = (
         url="https://www.manilatimes.net/news/feed",
         discovery_url="https://www.manilatimes.net/news",
     ),
+    FreeFeedDefinition(
+        name="BusinessWorld",
+        url="https://bworldonline.com/feed/",
+        discovery_url="https://bworldonline.com/",
+    ),
 )
 
 
@@ -100,11 +110,13 @@ def _source_out(row: CollectionSource) -> CollectionSourceOut:
     )
 
 
-def _aliases(profile: Profile) -> tuple[str, ...]:
+def _aliases(profile: Profile, figure: PoliticalFigure | None = None) -> tuple[str, ...]:
     raw: list[str] = [profile.full_name]
     identity_aliases = (profile.identity or {}).get("aliases", [])
     if isinstance(identity_aliases, list):
         raw.extend(str(alias) for alias in identity_aliases if alias)
+    if figure:
+        raw.extend([figure.canonical_name, *(figure.aliases or [])])
     terms = {_WORD_SPACE.sub(" ", alias).strip().casefold() for alias in raw}
     return tuple(sorted((term for term in terms if len(term) >= 4), key=len, reverse=True))
 
@@ -133,13 +145,11 @@ def _assessment_summary(signals: list[SignalEvent], aliases: tuple[str, ...] = (
     # A feed description can establish relevance even when the headline foregrounds
     # another person. Lead the digest with headlines naming the subject directly.
     direct_titles = [title for title in distinct_titles if _contains_alias(title, aliases)]
-    titles = (direct_titles + [title for title in distinct_titles if title not in direct_titles])[:3]
+    titles = (direct_titles + [title for title in distinct_titles if title not in direct_titles])[
+        :3
+    ]
     source_count = len({signal.platform for signal in signals})
-    focus = (
-        f'“{titles[0]}”'
-        if len(titles) == 1
-        else "; ".join(f'“{title}”' for title in titles)
-    )
+    focus = f"“{titles[0]}”" if len(titles) == 1 else "; ".join(f"“{title}”" for title in titles)
     return (
         f"Public coverage in the last 36 hours centers on {focus}. "
         f"This assessment is based on {len(signals)} attributed item"
@@ -215,7 +225,11 @@ async def _source_record(db: AsyncSession, source: CollectionSource, item: FeedI
     return row
 
 
-async def _create_assessments(db: AsyncSession, profiles: list[Profile]) -> int:
+async def _create_assessments(
+    db: AsyncSession,
+    profiles: list[Profile],
+    profile_aliases: dict[object, tuple[str, ...]],
+) -> int:
     now = datetime.now(UTC)
     cutoff = now - timedelta(hours=36)
     created = 0
@@ -250,9 +264,7 @@ async def _create_assessments(db: AsyncSession, profiles: list[Profile]) -> int:
                 "url": signal.url,
                 "title": signal.title,
                 "source": signal.platform,
-                "published_at": (
-                    signal.published_at or signal.observed_at
-                ).isoformat(),
+                "published_at": (signal.published_at or signal.observed_at).isoformat(),
             }
             for signal in signals
         ]
@@ -285,7 +297,7 @@ async def _create_assessments(db: AsyncSession, profiles: list[Profile]) -> int:
                 window_end=now,
                 effective_at=now,
                 payload={
-                    "summary": _assessment_summary(signals, _aliases(profile)),
+                    "summary": _assessment_summary(signals, profile_aliases[profile.id]),
                     "importance": _importance(len(signals), source_count),
                     "item_count": len(signals),
                     "source_count": source_count,
@@ -321,8 +333,17 @@ async def collect_free_feeds(db: AsyncSession, actor: User | None = None) -> Fre
         .scalars()
         .all()
     )
-    profiles = (await db.execute(select(Profile))).scalars().all()
-    profile_aliases = {profile.id: _aliases(profile) for profile in profiles}
+    profiles = list((await db.execute(select(Profile))).scalars().all())
+    figures = list(
+        (await db.execute(select(PoliticalFigure).where(PoliticalFigure.archived_at.is_(None))))
+        .scalars()
+        .all()
+    )
+    figure_index = {key: figure for figure in figures for key in public_name_keys(figure)}
+    profile_aliases = {
+        profile.id: _aliases(profile, figure_index.get(normalize_public_name(profile.full_name)))
+        for profile in profiles
+    }
     counters = _Counters()
     collector = PublisherFeedCollector()
     now = datetime.now(UTC)
@@ -348,9 +369,10 @@ async def collect_free_feeds(db: AsyncSession, actor: User | None = None) -> Fre
                 continue
             source_row = await _source_record(db, source, item)
             for profile in matched_profiles:
+                appearance = classify_publisher_appearance(item, profile_aliases[profile.id])
                 duplicate = (
                     await db.execute(
-                        select(SignalEvent.id).where(
+                        select(SignalEvent).where(
                             SignalEvent.subject_id == profile.id,
                             or_(
                                 SignalEvent.content_hash == item.content_hash,
@@ -360,6 +382,17 @@ async def collect_free_feeds(db: AsyncSession, actor: User | None = None) -> Fre
                     )
                 ).scalar_one_or_none()
                 if duplicate:
+                    if appearance and duplicate.event_type == "media_mention":
+                        duplicate.event_type = "public_appearance"
+                        duplicate.provenance = {
+                            **(duplicate.provenance or {}),
+                            "classification_confidence": appearance.confidence,
+                            "classification_basis": appearance.basis,
+                            "appearance_kind": appearance.kind,
+                            "appearance_description": appearance.description,
+                            "is_inference": True,
+                        }
+                        counters.appearances_created += 1
                     counters.duplicates += 1
                     continue
                 signal = SignalEvent(
@@ -368,7 +401,7 @@ async def collect_free_feeds(db: AsyncSession, actor: User | None = None) -> Fre
                     source_id=source_row.id,
                     external_id=item.external_id,
                     platform=urlparse(item.url).hostname or source.name,
-                    event_type="media_mention",
+                    event_type="public_appearance" if appearance else "media_mention",
                     language=str((source.source_metadata or {}).get("language") or "und"),
                     title=item.title,
                     content=item.summary or item.title,
@@ -387,15 +420,41 @@ async def collect_free_feeds(db: AsyncSession, actor: User | None = None) -> Fre
                         "observation_type": "observed",
                         "match_rule": "exact_profile_name_or_alias",
                         "is_inference": False,
+                        **(
+                            {
+                                "classification_confidence": appearance.confidence,
+                                "classification_basis": appearance.basis,
+                                "appearance_kind": appearance.kind,
+                                "appearance_description": appearance.description,
+                                "is_inference": True,
+                            }
+                            if appearance
+                            else {}
+                        ),
                     },
                     content_hash=item.content_hash,
                     is_public=True,
                 )
                 db.add(signal)
                 counters.signals_created += 1
+                counters.appearances_created += int(appearance is not None)
         source.last_collected_at = now
         await db.flush()
 
-    counters.opinions_created = await _create_assessments(db, profiles)
+    if settings.free_youtube_feeds_enabled:
+        youtube = await collect_official_youtube_appearances(
+            db,
+            max_items_per_feed=settings.free_youtube_max_items_per_feed,
+            timeout_seconds=settings.free_rss_request_timeout_seconds,
+        )
+        counters.feeds_checked += youtube.feeds_checked
+        counters.entries_seen += youtube.entries_seen
+        counters.signals_created += youtube.signals_created
+        counters.duplicates += youtube.duplicates
+        counters.unmatched += youtube.unmatched
+        counters.appearances_created += youtube.appearances_created
+        counters.errors.extend(youtube.errors)
+
+    counters.opinions_created = await _create_assessments(db, profiles, profile_aliases)
     await db.commit()
     return FreeFeedCollectionOut(**vars(counters))

@@ -59,7 +59,9 @@ def _same_origin(left: str, right: str) -> bool:
 
 
 class PublisherFeedCollector:
-    async def collect(self, feed_url: str, *, max_items: int, timeout_seconds: float) -> list[FeedItem]:
+    async def collect(
+        self, feed_url: str, *, max_items: int, timeout_seconds: float
+    ) -> list[FeedItem]:
         await validate_public_destination(feed_url)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_seconds, connect=min(timeout_seconds, 5.0)),
@@ -73,7 +75,9 @@ class PublisherFeedCollector:
             if response.is_redirect:
                 location = urljoin(feed_url, response.headers.get("location", ""))
                 if not location or not _same_origin(feed_url, location):
-                    raise CollectionPolicyError("RSS redirects must remain on the registered origin")
+                    raise CollectionPolicyError(
+                        "RSS redirects must remain on the registered origin"
+                    )
                 await validate_public_destination(location)
                 response = await client.get(location)
             response.raise_for_status()
