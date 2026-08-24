@@ -1,7 +1,7 @@
 [project]
 name = "parallax-backend"
 version = "0.1.0"
-description = "Parallax Politics agentic backend (FastAPI + OpenRouter + EXA)"
+description = "Parallax Politics agentic backend (FastAPI + NVIDIA NIM + EXA)"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.115.0",
@@ -24,6 +24,8 @@ dependencies = [
     "tenacity>=9.0.0",
     "orjson>=3.10.7",
     "sse-starlette>=2.1.3",
+    "scrapling>=0.4.12,<0.5",
+    "feedparser>=6.0.11",
 ]
 
 [project.optional-dependencies]

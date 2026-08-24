@@ -4,24 +4,44 @@ PACK_META = {
     "id": "philippines_politics",
     "label": "Philippine Political Intelligence",
     "principal_archetype": "Philippine politician / public official",
-
     "emotions": (
-        "anger", "ridicule", "disappointment", "fatigue",
-        "fear", "betrayal", "trust", "pride",
+        "anger",
+        "ridicule",
+        "disappointment",
+        "fatigue",
+        "fear",
+        "betrayal",
+        "trust",
+        "pride",
     ),
     "dimensions": (
-        "competence", "empathy", "integrity",
-        "decisiveness", "maka_masa_vs_elitist", "crisis_command",
+        "competence",
+        "empathy",
+        "integrity",
+        "decisiveness",
+        "maka_masa_vs_elitist",
+        "crisis_command",
     ),
-
     "source_domain_hints": (
-        "gov.ph", "senate.gov.ph", "congress.gov.ph", "comelec.gov.ph",
-        "ovp.gov.ph", "psa.gov.ph", "pna.gov.ph",
-        "rappler.com", "inquirer.net", "gmanetwork.com", "philstar.com",
-        "mb.com.ph", "bworldonline.com", "abs-cbn.com", "tv5.com.ph",
-        "businessmirror.com.ph", "sunstar.com.ph", "manilatimes.net",
+        "gov.ph",
+        "senate.gov.ph",
+        "congress.gov.ph",
+        "comelec.gov.ph",
+        "ovp.gov.ph",
+        "psa.gov.ph",
+        "pna.gov.ph",
+        "rappler.com",
+        "inquirer.net",
+        "gmanetwork.com",
+        "philstar.com",
+        "mb.com.ph",
+        "bworldonline.com",
+        "abs-cbn.com",
+        "tv5.com.ph",
+        "businessmirror.com.ph",
+        "sunstar.com.ph",
+        "manilatimes.net",
     ),
-
     "cohort_template": (
         "NCR media class",
         "Solid North (Ilocos / Pangasinan)",
@@ -35,7 +55,6 @@ PACK_META = {
         "Catholic majority",
         "INC bloc",
     ),
-
     "intake_prompt_template": (
         "Build a comprehensive intelligence dossier for the Philippine political principal: {name}. "
         "Gather all publicly available information about their background, career, current political position, "

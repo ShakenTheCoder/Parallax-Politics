@@ -7,8 +7,11 @@ import {
   BriefSummary,
   BriefTopic,
   MyIdentityOut,
+  streamRunEvents,
   TopicStance,
+  ThirtySecondBrief,
 } from "@/lib/api";
+import BriefView from "@/components/intelligence/BriefView";
 
 // --- generation step types --------------------------------------------------
 
@@ -39,27 +42,12 @@ const POLL_MS = 5000;
 
 // --- helpers -----------------------------------------------------------------
 
-const STANCE_STYLES: Record<TopicStance, { label: string; cls: string }> = {
-  lead: { label: "LEAD", cls: "border-green-500 text-green-500" },
-  engage: { label: "ENGAGE", cls: "border-yellow-500 text-yellow-500" },
-  avoid: { label: "AVOID", cls: "border-red-500 text-red-500" },
-};
-
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
-}
-
-function StanceBadge({ stance }: { stance: TopicStance }) {
-  const s = STANCE_STYLES[stance];
-  return (
-    <span className={`text-[10px] font-bold tracking-widest border px-2 py-0.5 ${s.cls}`}>
-      {s.label}
-    </span>
-  );
 }
 
 function SectionTitle({ title }: { title: string }) {
@@ -218,7 +206,7 @@ function SourcesView({ brief }: { brief: BriefOut }) {
   );
 }
 
-function BriefDetail({ brief }: { brief: BriefOut }) {
+function BriefDetail({ brief, onSeeNextMove }: { brief: BriefOut; onSeeNextMove: () => void }) {
   const [topicTab, setTopicTab] = useState<TopicStance | "all">("lead");
 
   const leadTopics = brief.topics.filter((t) => t.stance === "lead");
@@ -294,7 +282,7 @@ function BriefDetail({ brief }: { brief: BriefOut }) {
             <p className="text-sm font-medium mt-1 line-clamp-2">{brief.action_card.what}</p>
           </div>
           <button
-            onClick={() => (window as unknown as { setActiveTab: (t: "brief" | "sources" | "nextmove" | "history") => void }).setActiveTab?.("nextmove")}
+            onClick={onSeeNextMove}
             className="px-4 py-2 bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity shrink-0 w-full sm:w-auto"
           >
             See next move →
@@ -305,8 +293,8 @@ function BriefDetail({ brief }: { brief: BriefOut }) {
   );
 }
 
-// --- identity panel ----------------------------------------------------------
-
+// Kept for the dedicated identity record route; it is intentionally not shown on the brief page.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function IdentityPanel({ data }: { data: MyIdentityOut }) {
   const [open, setOpen] = useState(false);
   const id = data.identity;
@@ -337,7 +325,7 @@ function IdentityPanel({ data }: { data: MyIdentityOut }) {
         const hasBasics = typeof basics.birth_date === "string" || typeof basics.birthplace === "string" || typeof basics.citizenship === "string" || typeof basics.gender === "string";
         const hasPosition = typeof id.current_position.role === "string";
         const hasParty = Array.isArray(id.party_history) && id.party_history.length > 0;
-        const validStances = Object.entries(id.policy_stances).filter(([_, v]) => {
+        const validStances = Object.entries(id.policy_stances).filter(([, v]) => {
           const val = typeof v === "object" && v && "value" in v ? String((v as { value?: string }).value) : typeof v === "string" ? v : "";
           return val && val !== "null" && val !== "";
         });
@@ -477,10 +465,12 @@ function HistoryView({
   briefs,
   selectedId,
   onSelect,
+  onArchive,
 }: {
   briefs: BriefSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onArchive: (id: string) => void;
 }) {
   if (briefs.length === 0) return (
     <div className="border border-dashed border-border p-10 text-center">
@@ -497,24 +487,34 @@ function HistoryView({
         {briefs.map((b) => {
           const isActive = b.id === selectedId;
           return (
-            <button
+            <div
               key={b.id}
-              onClick={() => onSelect(b.id)}
               className={`w-full text-left p-4 hover:bg-border/30 transition-colors ${isActive ? "bg-border/20" : ""}`}
             >
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                 <p className="text-xs text-muted-foreground">{fmtDate(b.created_at)}</p>
-                <span className={`text-[10px] px-2 py-0.5 border ${isActive ? "border-foreground" : "border-border"}`}>
-                  {Math.round(b.confidence * 100)}% conf
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] px-2 py-0.5 border ${isActive ? "border-foreground" : "border-border"}`}>
+                    {Math.round(b.confidence * 100)}% conf
+                  </span>
+                  <button
+                    onClick={() => onArchive(b.id)}
+                    className="text-[10px] px-2 py-0.5 border border-border text-muted-foreground hover:text-foreground hover:border-foreground transition-colors"
+                    aria-label={`Archive brief from ${fmtDate(b.created_at)}`}
+                  >
+                    Archive
+                  </button>
+                </div>
               </div>
-              <p className="text-sm font-medium leading-snug line-clamp-2">{b.action_what}</p>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
-                <span>Risk: <span className="text-foreground">{b.top_risk_label || "—"}</span></span>
-                <span>·</span>
-                <span>Opp: <span className="text-foreground">{b.top_opportunity_label || "—"}</span></span>
-              </div>
-            </button>
+              <button onClick={() => onSelect(b.id)} className="w-full text-left">
+                <p className="text-sm font-medium leading-snug line-clamp-2">{b.action_what}</p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                  <span>Risk: <span className="text-foreground">{b.top_risk_label || "—"}</span></span>
+                  <span>·</span>
+                  <span>Opp: <span className="text-foreground">{b.top_opportunity_label || "—"}</span></span>
+                </div>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -604,28 +604,76 @@ function GeneratorProgress({
 
 // --- main page ---------------------------------------------------------------
 
+function PidaaLoadingBanner() {
+  return (
+    <div className="flex items-center gap-3 border border-yellow-500/60 bg-yellow-500/5 px-4 py-3 text-sm">
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 shrink-0 animate-spin text-yellow-500" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12a8 8 0 10-8 8" /></svg>
+      <div>
+        <p className="font-medium">Preparing your identity dossier</p>
+        <p className="text-xs text-muted-foreground">PIDAA is still preparing deeper identity data; you can generate a brief now.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function BriefPage() {
+  const [brief, setBrief] = useState<ThirtySecondBrief | null>(null);
+  const [briefError, setBriefError] = useState("");
+  const [activityWindow, setActivityWindow] = useState<"6h" | "24h" | "7d">("24h");
+  const [windowLoading, setWindowLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.getBriefView(activityWindow)
+      .then((payload) => {
+        if (!cancelled) setBrief(payload);
+      })
+      .catch((reason) => {
+        if (!cancelled) setBriefError(reason instanceof Error ? reason.message : "Brief could not be loaded.");
+      })
+      .finally(() => { if (!cancelled) setWindowLoading(false); });
+    return () => { cancelled = true; };
+  }, [activityWindow]);
+
+  const changeActivityWindow = (nextWindow: "6h" | "24h" | "7d") => {
+    setWindowLoading(true);
+    setActivityWindow(nextWindow);
+  };
+
+  return (
+    <main className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-10">
+      {briefError && (
+        <div className="mx-auto max-w-2xl border-l-4 border-[var(--signal-red)] bg-[var(--signal-wash)] p-5">
+          <p className="font-semibold">Brief unavailable</p>
+          <p className="mt-2 text-sm leading-6">{briefError} No substitute scores or opinions are shown when the evidence service is unavailable.</p>
+        </div>
+      )}
+      {!brief && !briefError && <p className="mx-auto max-w-2xl py-20 text-center text-sm text-muted-foreground">Opening your latest Brief…</p>}
+      {brief && <BriefView brief={brief} onWindowChange={changeActivityWindow} windowLoading={windowLoading} />}
+    </main>
+  );
+}
+
+export function LegacyBriefPage() {
   const [identity, setIdentity] = useState<MyIdentityOut | null>(null);
   const [briefs, setBriefs] = useState<BriefSummary[]>([]);
   const [active, setActive] = useState<BriefOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [genStatus, setGenStatus] = useState<GenStatus>("idle");
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [steps, setSteps] = useState<StepState[]>(makeSteps());
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"brief" | "sources" | "nextmove" | "history">("brief");
-  // Expose setActiveTab for the "See next move" button
-  if (typeof window !== "undefined") {
-    (window as unknown as { setActiveTab: typeof setActiveTab }).setActiveTab = setActiveTab;
-  }
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const eventsAbortRef = useRef<AbortController | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
   const closeSSE = useCallback(() => {
-    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    eventsAbortRef.current?.abort();
+    eventsAbortRef.current = null;
   }, []);
 
   // Run exactly once on mount. No dependency on `active` => no refetch loop.
@@ -651,6 +699,17 @@ export default function BriefPage() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (!cancelled && !msg.includes("404")) setError(msg);
+      }
+      try {
+        const run = await api.getActiveBrief();
+        if (!cancelled && run.run_id) {
+          setActiveRunId(run.run_id);
+          setGenStatus("generating");
+          setSteps((previous) => previous.map((step, index) => index === 0 ? { ...step, status: "running" } : step));
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!cancelled && !msg.includes("404")) setError(msg);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -658,6 +717,38 @@ export default function BriefPage() {
     return () => { cancelled = true; stopPolling(); closeSSE(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Server state is authoritative. This survives reloads, makes the button
+  // unavailable while a run exists, and handles a run whose SSE stream began
+  // before this browser session.
+  useEffect(() => {
+    if (!activeRunId) return;
+    let cancelled = false;
+    const refreshRun = async () => {
+      try {
+        const run = await api.getRun(activeRunId);
+        if (cancelled || (run.status !== "completed" && run.status !== "failed" && run.status !== "budget_exhausted")) return;
+        if (run.status === "completed") {
+          const list = await api.listBriefs();
+          if (cancelled) return;
+          setBriefs(list);
+          if (list.length > 0) setActive(await api.getLatestBrief());
+          setSteps((previous) => previous.map((step) => ({ ...step, status: "completed" })));
+          setGenStatus("completed");
+        } else {
+          setGenStatus(run.status === "budget_exhausted" ? "budget_exhausted" : "failed");
+          setError(run.error || "Brief generation failed");
+        }
+        setActiveRunId(null);
+        stopPolling();
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    void refreshRun();
+    const timer = setInterval(() => { void refreshRun(); }, 2000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [activeRunId, stopPolling]);
 
   const handleGenerate = async () => {
     setGenStatus("generating");
@@ -667,52 +758,36 @@ export default function BriefPage() {
     stopPolling();
     try {
       const { run_id } = await api.generateBrief();
+      setActiveRunId(run_id);
 
-      // Open SSE stream for live step events
-      const es = api.openRunEvents(run_id);
-      esRef.current = es;
-
-      es.addEventListener("step.started", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { step: StepKey; label?: string };
-        setSteps((prev) =>
-          prev.map((s) =>
-            s.key === data.step
-              ? { ...s, status: "running", label: data.label ?? s.label }
-              : s
-          )
-        );
-      });
-
-      es.addEventListener("step.completed", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { step: StepKey };
-        setSteps((prev) =>
-          prev.map((s) => (s.key === data.step ? { ...s, status: "completed" } : s))
-        );
-      });
-
-      es.addEventListener("run.failed", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { error?: string };
-        setGenStatus("failed");
-        setError(data.error ?? "Run failed");
-        closeSSE();
-        stopPolling();
-      });
-
-      es.addEventListener("run.budget_exhausted", (e: MessageEvent) => {
-        const data = JSON.parse(e.data) as { error?: string };
-        setGenStatus("budget_exhausted");
-        setError(data.error ?? "Budget cap reached");
-        closeSSE();
-        stopPolling();
-      });
-
-      es.addEventListener("run.completed", () => {
-        setGenStatus("completed");
-        setSteps((prev) => prev.map((s) => ({ ...s, status: "completed" })));
-        closeSSE();
-      });
-
-      es.onerror = () => closeSSE();
+      // Fetch streaming keeps bearer credentials out of the URL.
+      const eventAbort = new AbortController();
+      eventsAbortRef.current = eventAbort;
+      void (async () => {
+        try {
+          for await (const event of streamRunEvents(run_id, eventAbort.signal)) {
+            const type = String(event.type ?? "");
+            if (type === "step.started") {
+              const step = event.step as StepKey;
+              setSteps((prev) => prev.map((item) => item.key === step ? { ...item, status: "running", label: typeof event.label === "string" ? event.label : item.label } : item));
+            } else if (type === "step.completed") {
+              const step = event.step as StepKey;
+              setSteps((prev) => prev.map((item) => item.key === step ? { ...item, status: "completed" } : item));
+            } else if (type === "run.failed" || type === "run.budget_exhausted") {
+              setGenStatus(type === "run.failed" ? "failed" : "budget_exhausted");
+              setError(typeof event.error === "string" ? event.error : type === "run.failed" ? "Run failed" : "Budget cap reached");
+              setActiveRunId(null);
+              stopPolling();
+            } else if (type === "run.completed") {
+              setGenStatus("completed");
+              setSteps((prev) => prev.map((item) => ({ ...item, status: "completed" })));
+              setActiveRunId(null);
+            }
+          }
+        } catch (error) {
+          if (!eventAbort.signal.aborted) setError(error instanceof Error ? error.message : "Run event stream failed");
+        }
+      })();
 
       // Poll for the brief row (persisted after run.completed)
       const baseline = briefs.length;
@@ -724,6 +799,7 @@ export default function BriefPage() {
           if (list.length > baseline) {
             setBriefs(list);
             try { setActive(await api.getLatestBrief()); } catch {}
+            setActiveRunId(null);
             stopPolling();
             return;
           }
@@ -733,12 +809,14 @@ export default function BriefPage() {
         if (attempts >= 45) {
           stopPolling();
           setError("Brief generation timed out. Check backend logs.");
+          setActiveRunId(null);
         }
       }, POLL_MS);
 
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setGenStatus("failed");
+      setActiveRunId(null);
     }
   };
 
@@ -752,15 +830,30 @@ export default function BriefPage() {
     }
   };
 
+  const handleArchive = async (id: string) => {
+    try {
+      await api.archiveBrief(id);
+      const list = await api.listBriefs();
+      setBriefs(list);
+      if (active?.id === id) {
+        if (list.length === 0) {
+          setActive(null);
+        } else {
+          setActive(await api.getLatestBrief());
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const pidaaReady = identity?.pidaa_status === "ready";
-  const pidaaStatus = identity?.pidaa_status ?? "loading";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
 
-        {/* Identity panel (collapsible) */}
-        {identity && <IdentityPanel data={identity} />}
+        {!loading && !pidaaReady && <PidaaLoadingBanner />}
 
         {/* Active brief or empty state */}
         {loading ? (
@@ -813,10 +906,10 @@ export default function BriefPage() {
               </div>
               <button
                 onClick={handleGenerate}
-                disabled={genStatus === "generating" || !pidaaReady}
+                disabled={genStatus === "generating" || activeRunId !== null}
                 className="px-4 py-2 bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed shrink-0 ml-4"
               >
-                {genStatus === "generating" ? "Generating…" : "Generate New Brief"}
+                {activeRunId ? "Brief in progress…" : genStatus === "generating" ? "Generating…" : "Generate New Brief"}
               </button>
             </div>
 
@@ -826,28 +919,21 @@ export default function BriefPage() {
             )}
 
             {/* Tab content */}
-            {activeTab === "brief" && <BriefDetail brief={active} />}
+            {activeTab === "brief" && <BriefDetail brief={active} onSeeNextMove={() => setActiveTab("nextmove")} />}
             {activeTab === "sources" && <SourcesView brief={active} />}
             {activeTab === "nextmove" && <NextMoveView brief={active} />}
-            {activeTab === "history" && <HistoryView briefs={briefs} selectedId={active?.id ?? null} onSelect={handleSelect} />}
+            {activeTab === "history" && <HistoryView briefs={briefs} selectedId={active?.id ?? null} onSelect={handleSelect} onArchive={handleArchive} />}
           </div>
         ) : (
-          <div className="border border-dashed border-border p-10 text-center space-y-4">
+          <div className="p-10 text-center space-y-4">
             <p className="text-muted-foreground">No briefs yet.</p>
-            {pidaaReady && (
-              <button
-                onClick={handleGenerate}
-                disabled={genStatus === "generating"}
-                className="px-6 py-3 bg-foreground text-background font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {genStatus === "generating" ? "Generating…" : "Generate New Brief"}
-              </button>
-            )}
-            {!pidaaReady && (
-              <p className="text-xs text-muted-foreground">
-                PIDAA must finish before briefs are available.
-              </p>
-            )}
+            <button
+              onClick={handleGenerate}
+              disabled={genStatus === "generating" || activeRunId !== null}
+              className="px-6 py-3 bg-foreground text-background font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {activeRunId ? "Brief in progress…" : genStatus === "generating" ? "Generating…" : "Generate New Brief"}
+            </button>
           </div>
         )}
 

@@ -4,15 +4,18 @@ This module defines the standard taxonomy of coverage gaps that PIDAA can detect
 and SCDRA can attempt to resolve. Each gap type includes severity classification,
 auto-resolvability flags, and EXA search query templates.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import Any
 
 
 @dataclass(frozen=True)
 class GapType:
     """Definition of a coverage gap type."""
+
     id: str
     severity: str  # high/medium/low
     description: str
@@ -20,7 +23,7 @@ class GapType:
     auto_resolvable: bool
     max_attempts: int = 3
     cost_budget_usd: float = 0.10
-    query_templates: tuple[str, ...] = field(default_factory=tuple)
+    query_templates: tuple[str, ...] = dataclass_field(default_factory=tuple)
 
     def build_query(self, principal_name: str, **kwargs: Any) -> str:
         """Build a search query using the first available template."""
@@ -34,6 +37,7 @@ class GapType:
             # and remove remaining {placeholder} patterns
             result = template.replace("{name}", principal_name)
             import re
+
             result = re.sub(r"\{[^}]+\}", "", result)
             return result.strip()
 
@@ -281,7 +285,9 @@ def get_gap_type(gap_type_id: str) -> GapType | None:
     return GAP_TAXONOMY.get(gap_type_id)
 
 
-def list_gap_types(severity: str | None = None, auto_resolvable: bool | None = None) -> list[GapType]:
+def list_gap_types(
+    severity: str | None = None, auto_resolvable: bool | None = None
+) -> list[GapType]:
     """List all gap types, optionally filtered by severity or auto_resolvable flag."""
     gaps = list(GAP_TAXONOMY.values())
     if severity:
@@ -310,15 +316,15 @@ def calculate_data_completeness(identity_sections: dict[str, Any]) -> float:
         section_data = identity_sections.get(section, {})
 
         # Check mandatory fields
-        for field in requirements["mandatory"]:
+        for requirement_field in requirements["mandatory"]:
             total_required += 1
-            if _field_present(section_data, field):
+            if _field_present(section_data, requirement_field):
                 total_present += 1
 
         # Check important fields (weighted 0.5)
-        for field in requirements["important"]:
+        for requirement_field in requirements["important"]:
             total_required += 0.5
-            if _field_present(section_data, field):
+            if _field_present(section_data, requirement_field):
                 total_present += 0.5
 
     if total_required == 0:
@@ -349,10 +355,7 @@ def _field_present(data: dict[str, Any], field_path: str) -> bool:
         if not remainder:
             return True
 
-        for item in base_value:
-            if _field_present(item, remainder):
-                return True
-        return False
+        return any(_field_present(item, remainder) for item in base_value)
 
     # Simple field path
     parts = field_path.split(".")
@@ -370,10 +373,7 @@ def _field_present(data: dict[str, Any], field_path: str) -> bool:
         return False
     if isinstance(current, (list, dict)) and not current:
         return False
-    if isinstance(current, str) and not current.strip():
-        return False
-
-    return True
+    return not isinstance(current, str) or bool(current.strip())
 
 
 def detect_gaps_from_pidaa_output(identity_sections: dict[str, Any]) -> list[dict[str, Any]]:
@@ -386,85 +386,99 @@ def detect_gaps_from_pidaa_output(identity_sections: dict[str, Any]) -> list[dic
     # Check basics section
     basics = identity_sections.get("basics", {})
     if not basics.get("born"):
-        gaps.append({
-            "gap_type": "birth_record_missing",
-            "severity": "high",
-            "description": GAP_TAXONOMY["birth_record_missing"].description,
-            "affected_fields": ["basics.born"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "birth_record_missing",
+                "severity": "high",
+                "description": GAP_TAXONOMY["birth_record_missing"].description,
+                "affected_fields": ["basics.born"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     # Check education section
     education = identity_sections.get("education", {})
     degrees = education.get("degrees", [])
     if not degrees or all(not d.get("institution") for d in degrees):
-        gaps.append({
-            "gap_type": "education_unverified",
-            "severity": "high",
-            "description": GAP_TAXONOMY["education_unverified"].description,
-            "affected_fields": ["education.degrees"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "education_unverified",
+                "severity": "high",
+                "description": GAP_TAXONOMY["education_unverified"].description,
+                "affected_fields": ["education.degrees"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     # Check family section
     family = identity_sections.get("family", {})
     children = family.get("children", [])
     if children and any(not c.get("name") for c in children):
-        gaps.append({
-            "gap_type": "family_children_incomplete",
-            "severity": "low",
-            "description": GAP_TAXONOMY["family_children_incomplete"].description,
-            "affected_fields": ["family.children"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "family_children_incomplete",
+                "severity": "low",
+                "description": GAP_TAXONOMY["family_children_incomplete"].description,
+                "affected_fields": ["family.children"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     if not family.get("siblings"):
-        gaps.append({
-            "gap_type": "siblings_details_missing",
-            "severity": "low",
-            "description": GAP_TAXONOMY["siblings_details_missing"].description,
-            "affected_fields": ["family.siblings"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "siblings_details_missing",
+                "severity": "low",
+                "description": GAP_TAXONOMY["siblings_details_missing"].description,
+                "affected_fields": ["family.siblings"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     if not family.get("parents") or len(family.get("parents", [])) < 2:
-        gaps.append({
-            "gap_type": "mother_biography_missing",
-            "severity": "medium",
-            "description": GAP_TAXONOMY["mother_biography_missing"].description,
-            "affected_fields": ["family.parents"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "mother_biography_missing",
+                "severity": "medium",
+                "description": GAP_TAXONOMY["mother_biography_missing"].description,
+                "affected_fields": ["family.parents"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     # Check current position section
     current = identity_sections.get("current_position", {})
     if current.get("role") and not current.get("term_start"):
-        gaps.append({
-            "gap_type": "term_dates_incomplete",
-            "severity": "medium",
-            "description": GAP_TAXONOMY["term_dates_incomplete"].description,
-            "affected_fields": ["current_position.term_start"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "term_dates_incomplete",
+                "severity": "medium",
+                "description": GAP_TAXONOMY["term_dates_incomplete"].description,
+                "affected_fields": ["current_position.term_start"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     # Check electoral record section
     electoral = identity_sections.get("electoral_record", {})
     races = electoral.get("races", [])
     if races and any(r.get("won") and not r.get("votes") for r in races):
-        gaps.append({
-            "gap_type": "electoral_votes_missing",
-            "severity": "low",
-            "description": GAP_TAXONOMY["electoral_votes_missing"].description,
-            "affected_fields": ["electoral_record.races.*.votes"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "electoral_votes_missing",
+                "severity": "low",
+                "description": GAP_TAXONOMY["electoral_votes_missing"].description,
+                "affected_fields": ["electoral_record.races.*.votes"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     # Check policy stances section
     policy = identity_sections.get("policy_stances", {})
@@ -472,43 +486,51 @@ def detect_gaps_from_pidaa_output(identity_sections: dict[str, Any]) -> list[dic
     for policy_key in mandatory_policies:
         policy_data = policy.get(policy_key, {})
         if not policy_data.get("value"):
-            gaps.append({
-                "gap_type": "policy_direct_quote_missing",
-                "severity": "medium",
-                "description": f"No direct statement found for {policy_key}",
-                "affected_fields": [f"policy_stances.{policy_key}"],
-                "auto_resolvable": True,
-                "status": "pending",
-            })
+            gaps.append(
+                {
+                    "gap_type": "policy_direct_quote_missing",
+                    "severity": "medium",
+                    "description": f"No direct statement found for {policy_key}",
+                    "affected_fields": [f"policy_stances.{policy_key}"],
+                    "auto_resolvable": True,
+                    "status": "pending",
+                }
+            )
 
     # Check controversies section
     controversies = identity_sections.get("controversies", {})
     items = controversies.get("items", [])
     for item in items:
-        if item.get("severity", 0) > 0.5 and item.get("status") not in ("resolved", "dismissed"):
-            if not item.get("status"):
-                gaps.append({
+        if (
+            item.get("severity", 0) > 0.5
+            and item.get("status") not in ("resolved", "dismissed")
+            and not item.get("status")
+        ):
+            gaps.append(
+                {
                     "gap_type": "controversy_legal_status_unknown",
                     "severity": "high",
                     "description": f"Legal status unclear for controversy: {item.get('label', 'Unknown')}",
                     "affected_fields": ["controversies.items.*.status"],
                     "auto_resolvable": True,
                     "status": "pending",
-                })
+                }
+            )
 
     # Check network section
     network = identity_sections.get("network", {})
     allies = network.get("allies", [])
-    rivals = network.get("rivals", [])
     if allies and any(not a.get("strength") for a in allies):
-        gaps.append({
-            "gap_type": "network_strength_unverified",
-            "severity": "low",
-            "description": GAP_TAXONOMY["network_strength_unverified"].description,
-            "affected_fields": ["network.allies.*.strength"],
-            "auto_resolvable": True,
-            "status": "pending",
-        })
+        gaps.append(
+            {
+                "gap_type": "network_strength_unverified",
+                "severity": "low",
+                "description": GAP_TAXONOMY["network_strength_unverified"].description,
+                "affected_fields": ["network.allies.*.strength"],
+                "auto_resolvable": True,
+                "status": "pending",
+            }
+        )
 
     # Check party history section
     party = identity_sections.get("party_history", {})
@@ -517,27 +539,38 @@ def detect_gaps_from_pidaa_output(identity_sections: dict[str, Any]) -> list[dic
         # Has party switches - check if dates are missing
         for aff in affiliations:
             if not aff.get("from") and not aff.get("to"):
-                gaps.append({
-                    "gap_type": "party_switch_date_unknown",
-                    "severity": "low",
-                    "description": GAP_TAXONOMY["party_switch_date_unknown"].description,
-                    "affected_fields": ["party_history.affiliations.*.from", "party_history.affiliations.*.to"],
-                    "auto_resolvable": True,
-                    "status": "pending",
-                })
+                gaps.append(
+                    {
+                        "gap_type": "party_switch_date_unknown",
+                        "severity": "low",
+                        "description": GAP_TAXONOMY["party_switch_date_unknown"].description,
+                        "affected_fields": [
+                            "party_history.affiliations.*.from",
+                            "party_history.affiliations.*.to",
+                        ],
+                        "auto_resolvable": True,
+                        "status": "pending",
+                    }
+                )
                 break  # Only add once
 
     # Check religion conversion
     religion = basics.get("religion", "")
-    if religion and any(word in religion.lower() for word in ["convert", "converted", "formerly"]):
-        if not basics.get("conversion_date") and "conversion" not in basics:
-            gaps.append({
+    if (
+        religion
+        and any(word in religion.lower() for word in ["convert", "converted", "formerly"])
+        and not basics.get("conversion_date")
+        and "conversion" not in basics
+    ):
+        gaps.append(
+            {
                 "gap_type": "religion_conversion_unconfirmed",
                 "severity": "medium",
                 "description": GAP_TAXONOMY["religion_conversion_unconfirmed"].description,
                 "affected_fields": ["basics.religion"],
                 "auto_resolvable": True,
                 "status": "pending",
-            })
+            }
+        )
 
     return gaps

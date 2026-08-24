@@ -1,4 +1,5 @@
 """Shared model mixins."""
+
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -8,9 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 
 class UUIDPK:
-    id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
 
 
 class Timestamps:

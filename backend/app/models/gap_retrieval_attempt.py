@@ -1,4 +1,5 @@
 """GapRetrievalAttempt — audit trail for SCDRA data retrieval attempts."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -36,9 +37,7 @@ class GapRetrievalAttempt(Base, UUIDPK, Timestamps):
     search_query: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Results
-    sources_found: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    sources_found: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     resolution_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )  # pending/resolved/failed/manual

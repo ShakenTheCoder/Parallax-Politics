@@ -1,4 +1,5 @@
 """User profile (onboarding data)."""
+
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import ForeignKey, Integer, String

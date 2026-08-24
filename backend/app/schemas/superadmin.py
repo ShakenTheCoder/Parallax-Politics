@@ -1,4 +1,5 @@
 """Superadmin-specific request/response schemas."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -53,6 +54,7 @@ class CreatePrincipalOut(BaseModel):
 
 
 class PrincipalIdentitySection(BaseModel):
+    profile_image_url: str | None = None
     basics: dict[str, Any] = Field(default_factory=dict)
     family: dict[str, Any] = Field(default_factory=dict)
     education: dict[str, Any] = Field(default_factory=dict)
@@ -78,6 +80,8 @@ class PrincipalSummary(BaseModel):
     pidaa_status: str
     built_at: str | None = None
     username: str
+    profile_image_url: str | None = None
+    overview: str | None = None
 
 
 class PrincipalDetail(BaseModel):

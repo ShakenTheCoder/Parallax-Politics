@@ -14,11 +14,12 @@ Example:
         else:
             print(f"{v.url} failed: {v.error}")
 """
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import ClassVar
 from urllib.parse import urlparse
 
@@ -67,7 +68,7 @@ class URLValidationResult:
     trusted_domain: bool = False
 
     # Class-level cache for known-good domains (fast path)
-    _domain_cache: ClassVar[dict[str, bool]] = field(default_factory=dict, repr=False)
+    _domain_cache: ClassVar[dict[str, bool]] = {}
 
 
 @retry(
@@ -76,7 +77,11 @@ class URLValidationResult:
     wait=wait_exponential(multiplier=1, min=0.5, max=3),
     reraise=True,
 )
-async def _head_with_fallback(client: httpx.AsyncClient, url: str, timeout: float) -> httpx.Response:
+async def _head_with_fallback(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: float,  # noqa: ASYNC109
+) -> httpx.Response:
     """Attempt HEAD request, fallback to GET if not supported."""
     try:
         response = await client.head(url, timeout=timeout, follow_redirects=True)
@@ -97,7 +102,7 @@ async def _head_with_fallback(client: httpx.AsyncClient, url: str, timeout: floa
 
 async def validate_url(
     url: str,
-    timeout: float = 5.0,
+    timeout: float = 5.0,  # noqa: ASYNC109
     use_cache: bool = True,
     client: httpx.AsyncClient | None = None,
 ) -> URLValidationResult:
@@ -133,8 +138,7 @@ async def validate_url(
             domain = domain[4:]
         # Check for trusted TLDs/domains
         is_trusted = any(
-            domain == trusted or domain.endswith(f".{trusted}")
-            for trusted in _TRUSTED_DOMAINS
+            domain == trusted or domain.endswith(f".{trusted}") for trusted in _TRUSTED_DOMAINS
         )
     except Exception as e:
         return URLValidationResult(
@@ -300,7 +304,7 @@ async def validate_urls(
     urls: list[str],
     *,
     concurrency: int = 5,
-    timeout: float = 5.0,
+    timeout: float = 5.0,  # noqa: ASYNC109
     use_cache: bool = True,
 ) -> list[URLValidationResult]:
     """Validate multiple URLs with controlled concurrency.
@@ -313,7 +317,7 @@ async def validate_urls(
 
     Returns:
         List of URLValidationResult in the same order as input.
-"""
+    """
     import asyncio
 
     if not urls:
@@ -359,7 +363,7 @@ async def validate_urls(
 
         # Map exceptions to failed results
         processed_results: list[URLValidationResult] = []
-        for url, result in zip(unique_urls, unique_results):
+        for url, result in zip(unique_urls, unique_results, strict=True):
             if isinstance(result, Exception):
                 processed_results.append(
                     URLValidationResult(
@@ -373,7 +377,7 @@ async def validate_urls(
 
         # Expand back to original order with deduplicated results
         final_results: list[URLValidationResult | None] = [None] * len(urls)
-        for url, result in zip(unique_urls, processed_results):
+        for url, result in zip(unique_urls, processed_results, strict=True):
             for idx in url_to_indices[url]:
                 final_results[idx] = result
 
@@ -392,8 +396,12 @@ def clear_validation_cache() -> None:
 def get_cache_stats() -> dict[str, int]:
     """Get current cache statistics."""
     now = time.time()
-    valid_count = sum(1 for v, t in _validation_cache.values() if v and now - t < _CACHE_TTL_SECONDS)
-    invalid_count = sum(1 for v, t in _validation_cache.values() if not v and now - t < _CACHE_TTL_SECONDS)
+    valid_count = sum(
+        1 for v, t in _validation_cache.values() if v and now - t < _CACHE_TTL_SECONDS
+    )
+    invalid_count = sum(
+        1 for v, t in _validation_cache.values() if not v and now - t < _CACHE_TTL_SECONDS
+    )
     return {
         "total_entries": len(_validation_cache),
         "valid_entries": valid_count,

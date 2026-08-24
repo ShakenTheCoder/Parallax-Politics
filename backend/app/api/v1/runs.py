@@ -1,9 +1,11 @@
 """Run + artifact endpoints (orchestrator wired)."""
+
 import asyncio
+import contextlib
 from uuid import UUID
 
 import orjson
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import desc, select
 from sse_starlette.sse import EventSourceResponse
 
@@ -21,9 +23,12 @@ from app.schemas.agents import (
     SourcePack,
 )
 from app.schemas.runs import PrincipalOut, RunOut
-from app.security import decode_token
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+def _can_access_run(run: Run, user: User) -> bool:
+    return user.role == "superadmin" or run.requested_by == user.id
 
 
 def _profile_to_out(profile: Profile | None) -> PrincipalOut | None:
@@ -49,7 +54,7 @@ def _profile_to_out(profile: Profile | None) -> PrincipalOut | None:
 def _run_to_out(run: Run, artifacts: list[Artifact], profile: Profile | None = None) -> RunOut:
     out_artifacts = RunArtifacts()
     for art in artifacts:
-        try:
+        with contextlib.suppress(Exception):
             if art.kind == "source_pack":
                 out_artifacts.source_pack = SourcePack.model_validate(art.payload)
             elif art.kind == "domain_briefing":
@@ -57,9 +62,9 @@ def _run_to_out(run: Run, artifacts: list[Artifact], profile: Profile | None = N
             elif art.kind == "demographic_briefing":
                 out_artifacts.demographic_briefing = DemographicBriefing.model_validate(art.payload)
             elif art.kind == "principal_identity":
-                out_artifacts.principal_identity = PrincipalIdentityArtifact.model_validate(art.payload)
-        except Exception:
-            pass
+                out_artifacts.principal_identity = PrincipalIdentityArtifact.model_validate(
+                    art.payload
+                )
     run_kind = (run.meta or {}).get("kind") or "situation"
     return RunOut(
         id=run.id,
@@ -81,22 +86,14 @@ async def run_events(
     run_id: UUID,
     request: Request,
     db: DbSession,
-    token: str | None = Query(default=None),
+    user: CurrentUser,
 ) -> EventSourceResponse:
-    """SSE stream of orchestrator progress events for a single run.
-
-    Accepts auth via Authorization: Bearer header OR ?token= query param
-    (needed because EventSource cannot set custom headers).
-    """
-    # Resolve token from query param
-    if token:
-        payload = decode_token(token)
-        if not payload or "sub" not in payload:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        from uuid import UUID as _UUID
-        res = await db.execute(select(User).where(User.id == _UUID(payload["sub"])))
-        if not res.scalar_one_or_none():
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    """Authenticated SSE stream for the run owner or an administrator."""
+    run = (await db.execute(select(Run).where(Run.id == run_id))).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not _can_access_run(run, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Run access denied")
 
     async def event_gen():
         channel = f"run.{run_id}"
@@ -117,10 +114,7 @@ async def run_events(
 async def get_my_latest_full_run(db: DbSession, user: CurrentUser) -> RunOut:
     """Return the most recent run for the current user with all artifacts and principal snapshot."""
     run_res = await db.execute(
-        select(Run)
-        .where(Run.requested_by == user.id)
-        .order_by(desc(Run.created_at))
-        .limit(1)
+        select(Run).where(Run.requested_by == user.id).order_by(desc(Run.created_at)).limit(1)
     )
     run = run_res.scalar_one_or_none()
     if not run:
@@ -138,11 +132,13 @@ async def get_my_latest_full_run(db: DbSession, user: CurrentUser) -> RunOut:
 
 
 @router.get("/{run_id}", response_model=RunOut)
-async def get_run(run_id: UUID, db: DbSession, _user: CurrentUser) -> RunOut:
+async def get_run(run_id: UUID, db: DbSession, user: CurrentUser) -> RunOut:
     res = await db.execute(select(Run).where(Run.id == run_id))
     run = res.scalar_one_or_none()
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    if not _can_access_run(run, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Run access denied")
     art_res = await db.execute(select(Artifact).where(Artifact.run_id == run_id))
     artifacts = list(art_res.scalars().all())
     profile: Profile | None = None

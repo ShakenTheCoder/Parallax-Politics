@@ -1,4 +1,5 @@
 """Context pack registry — load and cache ContextPack instances by ID."""
+
 from __future__ import annotations
 
 from functools import lru_cache

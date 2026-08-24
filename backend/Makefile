@@ -1,10 +1,11 @@
-.PHONY: help up down dev migrate test lint typecheck fmt
+.PHONY: help up down dev worker migrate test lint typecheck fmt
 
 help:
 	@echo "Targets:"
 	@echo "  up        - start postgres + redis (docker compose)"
 	@echo "  down      - stop infra"
 	@echo "  dev       - run the FastAPI dev server (autoreload)"
+	@echo "  worker    - run scheduled intelligence collection"
 	@echo "  migrate   - apply alembic migrations to head"
 	@echo "  test      - run pytest"
 	@echo "  lint      - ruff check"
@@ -19,6 +20,9 @@ down:
 
 dev:
 	uv run uvicorn app.main:app --reload --port 8000
+
+worker:
+	uv run arq app.worker.WorkerSettings
 
 migrate:
 	uv run alembic upgrade head

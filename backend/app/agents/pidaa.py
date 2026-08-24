@@ -3,17 +3,12 @@
 Runs once at principal creation (after superadmin confirmation).
 Builds the full 11-section identity knowledge base from multi-query EXA fan-out.
 
-Pipeline:
-1. 8-facet EXA fan-out (parallel, capped at 8 results each).
-2. Cheap-tier rank + deduplicate → unified source pack (≤40 sources).
-3. Four section-group LLM calls (default tier, sequential — rate-limit safe):
-   A: basics + family + education
-   B: career_timeline + current_position + party_history + electoral_record
-   C: policy_stances + voice_signature
-   D: controversies + network
-4. Aggregator pass: stitch + add source_index + coverage_gaps.
-5. Persist PrincipalIdentity row, emit AgentResult.
+Creation pipeline:
+1. Retrieve a broad, source-backed evidence pack for the confirmed candidate.
+2. Synthesize the dossier in independent section groups with the LLM.
+3. Persist the resulting evidence-backed identity and its coverage gaps.
 """
+
 from __future__ import annotations
 
 import asyncio  # still used for EXA fan-out gather
@@ -33,6 +28,7 @@ from app.llm.router import ModelTier
 from app.models.principal_identity import PrincipalIdentity
 from app.schemas.agents import AgentResult, PrincipalIdentityArtifact
 from app.search.exa import ExaSearchResult, get_exa_client
+from app.utils.portraits import resolve_wikimedia_portrait
 
 _SECTION_GROUPS = ("A", "B", "C", "D")
 _GROUP_SECTIONS: dict[str, tuple[str, ...]] = {
@@ -42,9 +38,17 @@ _GROUP_SECTIONS: dict[str, tuple[str, ...]] = {
     "D": ("controversies", "network"),
 }
 _IDENTITY_KEYS = (
-    "basics", "family", "education", "career_timeline", "current_position",
-    "party_history", "electoral_record", "policy_stances", "voice_signature",
-    "controversies", "network",
+    "basics",
+    "family",
+    "education",
+    "career_timeline",
+    "current_position",
+    "party_history",
+    "electoral_record",
+    "policy_stances",
+    "voice_signature",
+    "controversies",
+    "network",
 )
 _EXA_FACETS = (
     "{name} Philippines politician biography",
@@ -64,12 +68,17 @@ class PIDAA(BaseAgent):
     max_cost_usd = 0.50
 
     async def _run(self, ctx: AgentContext) -> AgentResult:
+        """Build and persist an evidence-backed identity dossier."""
+        return await self._run_deep(ctx)
+
+    async def _run_deep(self, ctx: AgentContext) -> AgentResult:
         llm = get_llm_client()
         system = load_prompt("pidaa", pack_id=ctx.pack_id)
         exa = get_exa_client()
 
         candidate: dict[str, Any] = ctx.extra.get("confirmed_candidate") or {}
         full_name: str = candidate.get("full_name") or ctx.situation_prompt[:100]
+        portrait_task = asyncio.create_task(resolve_wikimedia_portrait(full_name))
 
         # --- 1. EXA fan-out (parallel) ----------------------------------------
         queries = [f.format(name=full_name) for f in _EXA_FACETS]
@@ -83,6 +92,9 @@ class PIDAA(BaseAgent):
                 self.log.warning("pidaa.exa.error", query=q, error=str(exc))
 
         await asyncio.gather(*[_exa_query(q) for q in queries])
+        resolved_portrait = await portrait_task
+        if resolved_portrait:
+            candidate["photo_url"] = resolved_portrait
 
         ranked = sorted(
             pool.values(),
@@ -104,16 +116,19 @@ class PIDAA(BaseAgent):
 
         # --- 2. Build user prompt prefix shared across groups -----------------
         candidate_ctx = json.dumps(candidate, ensure_ascii=False)
-        # Cap per-group context to 15 sources to stay within per-minute token limits
-        _SOURCES_PER_GROUP = 15
+        # One structured synthesis avoids four serial/queued model calls while
+        # retaining enough evidence for the full dossier.
+        sources_per_group = 24
 
         def _group_prompt(group: str) -> str:
             sections = ", ".join(_GROUP_SECTIONS[group])
             # Each group gets a slightly different slice for coverage breadth
             idx = list(_SECTION_GROUPS).index(group)
-            start = (idx * _SOURCES_PER_GROUP) % max(1, len(sources_payload))
-            slice_ = (sources_payload[start:start + _SOURCES_PER_GROUP]
-                      or sources_payload[:_SOURCES_PER_GROUP])
+            start = (idx * sources_per_group) % max(1, len(sources_payload))
+            slice_ = (
+                sources_payload[start : start + sources_per_group]
+                or sources_payload[:sources_per_group]
+            )
             sources_ctx = json.dumps(slice_, ensure_ascii=False)
             return (
                 f"Confirmed candidate:\n{candidate_ctx}\n\n"
@@ -137,7 +152,7 @@ class PIDAA(BaseAgent):
                 system=system,
                 messages=[{"role": "user", "content": _group_prompt(group)}],
                 tier=ModelTier.default,
-                max_tokens=2000,
+                max_tokens=1400,
                 run_id=ctx.run_id,
                 json_mode=True,
                 temperature=0.25,
@@ -150,10 +165,7 @@ class PIDAA(BaseAgent):
             used_model = resp.model
             return resp.json_payload or {}
 
-        # Sequential to respect per-minute token rate limits
-        group_results = []
-        for g in _SECTION_GROUPS:
-            group_results.append(await _call_group(g))
+        group_results = await asyncio.gather(*[_call_group(group) for group in _SECTION_GROUPS])
 
         # --- 4. Aggregate sections --------------------------------------------
         merged: dict[str, Any] = {}
@@ -161,6 +173,9 @@ class PIDAA(BaseAgent):
             for key in _IDENTITY_KEYS:
                 if key in result:
                     merged[key] = result[key]
+        profile_image_url = candidate.get("photo_url") or (merged.get("basics") or {}).get(
+            "profile_image_url"
+        )
 
         # Build source_index from top-12 sources
         source_index = {
@@ -193,11 +208,20 @@ class PIDAA(BaseAgent):
             UUID(str(ctx.extra["profile_id"])) if ctx.extra.get("profile_id") else None
         )
         if subject_id:
-            await self._persist(subject_id, full_name, merged, coverage_gaps, structured_gaps, data_completeness)
+            await self._persist(
+                subject_id,
+                full_name,
+                merged,
+                coverage_gaps,
+                structured_gaps,
+                data_completeness,
+                profile_image_url,
+            )
 
         # --- 7. Build artifact -------------------------------------------------
         artifact = PrincipalIdentityArtifact(
             full_name=full_name,
+            profile_image_url=profile_image_url,
             basics=merged.get("basics") or {},
             family=merged.get("family") or {},
             education=merged.get("education") or {},
@@ -232,6 +256,7 @@ class PIDAA(BaseAgent):
         if structured_gaps and ctx.extra.get("auto_scdra", True):
             try:
                 from app.agents.scdra import SCDRA
+
                 scdra = SCDRA()
                 scdra_ctx = AgentContext(
                     run_id=ctx.run_id,
@@ -259,6 +284,7 @@ class PIDAA(BaseAgent):
         coverage_gaps: list[str],
         structured_gaps: list[dict[str, Any]],
         data_completeness: float,
+        profile_image_url: str | None,
     ) -> None:
         async with session_scope() as db:
             res = await db.execute(
@@ -269,12 +295,15 @@ class PIDAA(BaseAgent):
                 pi = PrincipalIdentity(profile_id=profile_id)
                 db.add(pi)
 
-            for key in _IDENTITY_KEYS + ("source_index",):
+            for key in (*_IDENTITY_KEYS, "source_index"):
                 if key in sections:
                     setattr(pi, key, sections[key])
             pi.coverage_gaps = coverage_gaps
             pi.coverage_gaps_structured = structured_gaps
             pi.data_completeness_score = data_completeness
             pi.raw_dossier = sections
+            # Clear stale or mismatched portraits when exact identity resolution
+            # cannot verify an image on a rerun.
+            pi.profile_image_url = profile_image_url
             pi.status = "ready"
             pi.built_at = datetime.now(UTC)

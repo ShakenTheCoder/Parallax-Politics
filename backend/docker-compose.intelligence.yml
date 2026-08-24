@@ -1,0 +1,66 @@
+# Optional local data-plane dependencies. This file is for development only;
+# production requires private networking, managed secrets, TLS, and backups.
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.2.4
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    ports:
+      - "127.0.0.1:9092:9092"
+    volumes:
+      - parallax-redpanda:/var/lib/redpanda/data
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - parallax-object-store:/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.5-alpine
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: parallax_intelligence
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9009:9000"
+    volumes:
+      - parallax-clickhouse:/var/lib/clickhouse
+
+  opensearch:
+    image: opensearchproject/opensearch:3.0.0
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - parallax-opensearch:/usr/share/opensearch/data
+
+volumes:
+  parallax-redpanda:
+  parallax-object-store:
+  parallax-clickhouse:
+  parallax-opensearch:

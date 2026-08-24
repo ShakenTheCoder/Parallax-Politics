@@ -2,12 +2,14 @@
 
 Append-only history. Each row is one snapshot of recommendations for a principal.
 """
+
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -46,3 +48,9 @@ class PrincipalBrief(Base, UUIDPK, Timestamps):
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False, default=0.0)
+
+    # Brief history is retained for auditability; archives are excluded from the
+    # active product surface without destroying prior decision records.
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )

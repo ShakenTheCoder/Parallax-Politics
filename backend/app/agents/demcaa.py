@@ -1,4 +1,5 @@
 """DEMCAA — Demographic Context Aware Agent (Philippines)."""
+
 from __future__ import annotations
 
 from app.agents._helpers import identity_brief, upstream_brief
@@ -31,7 +32,7 @@ class DEMCAA(BaseAgent):
             system=system,
             messages=[{"role": "user", "content": user}],
             tier=self.default_tier,
-            max_tokens=2500,
+            max_tokens=1000,
             run_id=ctx.run_id,
             json_mode=True,
             temperature=0.3,

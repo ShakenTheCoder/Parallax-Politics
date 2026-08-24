@@ -17,9 +17,9 @@ Pipeline:
 5. Recalculate data_completeness_score
 6. Emit SCDRAArtifact with resolutions + remaining gaps
 """
+
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -29,7 +29,6 @@ from sqlalchemy import select
 from app.agents.base import AgentContext, BaseAgent
 from app.db import session_scope
 from app.identity import (
-    GAP_TAXONOMY,
     GapType,
     calculate_data_completeness,
     get_gap_type,
@@ -86,7 +85,8 @@ class SCDRA(BaseAgent):
         )
 
         gaps_to_process = [
-            g for g in gaps_data
+            g
+            for g in gaps_data
             if severity_order.get(g.get("severity", "low"), 0) >= threshold_value
             and g.get("status") in ("pending", None)
             and g.get("auto_resolvable", True)
@@ -97,7 +97,9 @@ class SCDRA(BaseAgent):
                 agent=self.name,
                 summary=f"No gaps meeting severity threshold for {full_name}.",
                 payload=SCDRAArtifact(
-                    principal_identity_id=UUID(str(principal_identity_id)) if principal_identity_id else None,
+                    principal_identity_id=UUID(str(principal_identity_id))
+                    if principal_identity_id
+                    else None,
                     gaps_processed=0,
                     gaps_resolved=0,
                     gaps_remaining=len(gaps_data),
@@ -208,7 +210,9 @@ class SCDRA(BaseAgent):
         gaps_remaining = len([g for g in gaps_data if g.get("status") != "resolved"])
 
         artifact = SCDRAArtifact(
-            principal_identity_id=UUID(str(principal_identity_id)) if principal_identity_id else None,
+            principal_identity_id=UUID(str(principal_identity_id))
+            if principal_identity_id
+            else None,
             run_timestamp=datetime.now(UTC),
             gaps_processed=len(gaps_to_process),
             gaps_resolved=gaps_resolved,
@@ -237,14 +241,16 @@ class SCDRA(BaseAgent):
         structured = []
         for gap_text in legacy_gaps:
             gap_type = self._infer_gap_type_from_text(gap_text)
-            structured.append({
-                "gap_type": gap_type.id if gap_type else "unknown",
-                "severity": gap_type.severity if gap_type else "low",
-                "description": gap_text,
-                "affected_fields": list(gap_type.affected_sections) if gap_type else [],
-                "auto_resolvable": gap_type.auto_resolvable if gap_type else True,
-                "status": "pending",
-            })
+            structured.append(
+                {
+                    "gap_type": gap_type.id if gap_type else "unknown",
+                    "severity": gap_type.severity if gap_type else "low",
+                    "description": gap_text,
+                    "affected_fields": list(gap_type.affected_sections) if gap_type else [],
+                    "auto_resolvable": gap_type.auto_resolvable if gap_type else True,
+                    "status": "pending",
+                }
+            )
         return structured
 
     def _infer_gap_type_from_text(self, text: str) -> GapType | None:
@@ -449,7 +455,9 @@ class SCDRA(BaseAgent):
             "model": resp.model,
         }
 
-    def _extract_query_params(self, gap: dict[str, Any], identity_sections: dict[str, Any]) -> dict[str, Any]:
+    def _extract_query_params(
+        self, gap: dict[str, Any], identity_sections: dict[str, Any]
+    ) -> dict[str, Any]:
         """Extract context-specific parameters for query templates."""
         params = {}
         gap_type_id = gap.get("gap_type", "")
@@ -530,7 +538,7 @@ class SCDRA(BaseAgent):
         return f"""Gap to resolve: {gap_type_id}
 Description: {description}
 Principal: {full_name}
-Target fields: {', '.join(affected_fields)}
+Target fields: {", ".join(affected_fields)}
 
 Source to extract from:
 Title: {source_title}
@@ -631,7 +639,9 @@ Rules:
                 )
                 pi = res.scalar_one_or_none()
                 if not pi:
-                    self.log.warning("scdra.principal_not_found", profile_id=str(principal_identity_id))
+                    self.log.warning(
+                        "scdra.principal_not_found", profile_id=str(principal_identity_id)
+                    )
                     return
 
                 # Merge resolved fields into identity sections
@@ -651,7 +661,9 @@ Rules:
         except Exception as exc:
             self.log.warning("scdra.persist_failed", error=str(exc))
 
-    def _merge_field_into_principal(self, pi: PrincipalIdentity, field_path: str, value: Any) -> None:
+    def _merge_field_into_principal(
+        self, pi: PrincipalIdentity, field_path: str, value: Any
+    ) -> None:
         """Merge a resolved field value into the PrincipalIdentity model."""
         # Map field paths to model columns
         section_map = {
@@ -673,7 +685,7 @@ Rules:
         for prefix, section_name in section_map.items():
             if field_path.startswith(prefix):
                 target_section = section_name
-                inner_path = field_path[len(prefix):]
+                inner_path = field_path[len(prefix) :]
                 break
 
         if not target_section:

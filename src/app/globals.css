@@ -6,6 +6,11 @@
   --border: #000000;
   --muted: #d1d1d1;
   --muted-foreground: #555555;
+  --selection-background: #666666;
+  --selection-foreground: #ffffff;
+  --signal-blue: #555555;
+  --signal-red: #b3261e;
+  --signal-wash: #dcdfe4;
 }
 
 @theme inline {
@@ -22,11 +27,105 @@
   --foreground: #e6e6e6;
   --border: #e6e6e6;
   --muted: #1a1a1a;
-  --muted-foreground: #999999;
+  --muted-foreground: #ffffff;
+  --signal-blue: #a3a3a3;
+  --signal-red: #f28b82;
+  --signal-wash: #11151b;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+/* Keep text selection monochrome and consistent across themes. */
+::selection {
+  background-color: var(--selection-background);
+  color: var(--selection-foreground);
+}
+
+::-moz-selection {
+  background-color: var(--selection-background);
+  color: var(--selection-foreground);
+}
+
+/* Keep utility copy readable against the monochrome surfaces. */
+.text-muted-foreground {
+  color: var(--foreground);
+}
+
+.text-xs {
+  font-size: 0.8125rem;
+}
+
+.text-sm {
+  font-size: 0.9375rem;
+}
+
+/* The interface uses rules and contrast for hierarchy, never text underlines. */
+a,
+a:hover,
+a:focus-visible {
+  text-decoration: none;
+}
+
+.candidate-source:hover {
+  text-decoration: underline;
+}
+
+.border-b,
+.border-b-2,
+.border-y {
+  border-bottom-width: 0;
+}
+
+.tab-active {
+  color: var(--muted-foreground);
+  border-bottom: 2px solid var(--muted-foreground);
+}
+
+.momentum-ledger {
+  border-top: 5px solid var(--signal-blue);
+  border-bottom: 1px solid var(--border);
+  padding: 1.5rem 0 2rem;
+}
+
+.analysis-rail {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.analysis-rail button {
+  flex: 0 0 auto;
+  padding: 0.8rem 1rem;
+  border-left: 1px solid color-mix(in srgb, var(--border) 28%, transparent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.analysis-rail button:first-child {
+  border-left: 0;
+}
+
+.analysis-rail button.active {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

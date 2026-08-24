@@ -1,4 +1,5 @@
 """Thin pub/sub helpers used by agents + orchestrator + SSE endpoints."""
+
 from collections.abc import AsyncIterator
 from typing import Any
 

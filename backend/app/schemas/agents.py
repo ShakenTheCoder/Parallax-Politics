@@ -1,4 +1,5 @@
 """Canonical agent I/O contracts."""
+
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -46,6 +47,7 @@ class AgentResult(BaseModel):
 
 # --- Specific agent payload shapes (typed for downstream consumers) ----------
 
+
 class SourceItem(BaseModel):
     url: str
     title: str | None = None
@@ -84,16 +86,22 @@ class DemographicBriefing(BaseModel):
 
 class CoverageGap(BaseModel):
     """Structured coverage gap with type, severity, and resolution status."""
+
     gap_type: str = Field(..., description="Taxonomy gap type identifier")
     severity: str = Field(..., pattern=r"^(high|medium|low)$")
     description: str = Field(..., description="Human-readable description")
-    affected_fields: list[str] = Field(default_factory=list, description="JSON paths to affected fields")
-    auto_resolvable: bool = Field(default=True, description="Whether gap can be auto-resolved via SCDRA")
+    affected_fields: list[str] = Field(
+        default_factory=list, description="JSON paths to affected fields"
+    )
+    auto_resolvable: bool = Field(
+        default=True, description="Whether gap can be auto-resolved via SCDRA"
+    )
     status: str = Field(default="pending", pattern=r"^(pending|resolved|failed|manual)$")
 
 
 class GapResolution(BaseModel):
     """Record of a single gap resolution by SCDRA."""
+
     gap_type: str
     fields_resolved: list[str] = Field(default_factory=list)
     source_url: str | None = None
@@ -102,7 +110,9 @@ class GapResolution(BaseModel):
 
 class PrincipalIdentityArtifact(BaseModel):
     """Artifact shape emitted by PIDAA — mirrors principal_identities columns."""
+
     full_name: str
+    profile_image_url: str | None = None
     basics: dict[str, Any] = Field(default_factory=dict)
     family: dict[str, Any] = Field(default_factory=dict)
     education: dict[str, Any] = Field(default_factory=dict)
@@ -122,6 +132,7 @@ class PrincipalIdentityArtifact(BaseModel):
 
 class SCDRAArtifact(BaseModel):
     """Artifact emitted by SCDRA — Specific Candidate Data Retrieval Agent results."""
+
     principal_identity_id: UUID | None = None
     run_timestamp: datetime = Field(default_factory=datetime.utcnow)
     gaps_processed: int = 0
@@ -135,8 +146,10 @@ class SCDRAArtifact(BaseModel):
 
 # --- Run artifacts envelope --------------------------------------------------
 
+
 class RunArtifacts(BaseModel):
     """Per-run artifact envelope. The Brief is its own resource (see schemas/brief.py)."""
+
     source_pack: SourcePack | None = None
     domain_briefing: DomainBriefing | None = None
     demographic_briefing: DemographicBriefing | None = None

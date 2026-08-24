@@ -3,6 +3,7 @@
 Scores are a coarse 0..1 prior; the SGA / Strategist will combine them with
 per-result signals (recency, primary-source flag, etc.). Tune over time.
 """
+
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -80,6 +81,4 @@ def credibility_for(url: str) -> float:
 
 
 def is_primary(url: str) -> bool:
-    return domain_of(url) in _PRIMARY or any(
-        domain_of(url).endswith("." + d) for d in _PRIMARY
-    )
+    return domain_of(url) in _PRIMARY or any(domain_of(url).endswith("." + d) for d in _PRIMARY)

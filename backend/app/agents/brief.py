@@ -3,11 +3,12 @@
 Pipeline:
 1. Load PrincipalIdentity from DB → ctx.upstream["PIDAA"] (so SGA/DCAA/DEMCAA can read it).
 2. Run SGA (identity-driven) → ctx.upstream["SGA"].
-3. Run DCAA + DEMCAA sequentially (rate-limit safe) → ctx.upstream.
-4. Single Sonnet synthesis call → produces the full brief JSON.
+3. Run DCAA + DEMCAA in parallel → ctx.upstream.
+4. Single synthesis call → produces the full brief JSON.
 5. Persist a PrincipalBrief row.
-6. Auto-escalate to Opus once if confidence < 0.6 (budget permitting).
+6. Escalate once if confidence < 0.6 (budget permitting).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,6 +28,7 @@ from app.llm.budget import BudgetExhaustedError
 from app.llm.client import get_llm_client
 from app.llm.prompts import load_prompt
 from app.llm.router import ModelTier
+from app.models.competitor import Competitor
 from app.models.principal_brief import PrincipalBrief
 from app.models.principal_identity import PrincipalIdentity
 from app.schemas.agents import AgentResult
@@ -54,7 +56,10 @@ class BriefAgent(BaseAgent):
 
         async def _step_event(step: str, label: str | None = None) -> None:
             if ch:
-                await publish_event(ch, {"type": "step.started", "step": step, **(({"label": label}) if label else {})})
+                await publish_event(
+                    ch,
+                    {"type": "step.started", "step": step, **(({"label": label}) if label else {})},
+                )
 
         async def _done_event(step: str) -> None:
             if ch:
@@ -66,8 +71,9 @@ class BriefAgent(BaseAgent):
         await _done_event("sga")
 
         # --- 3. DCAA + DEMCAA (parallelized for performance) -------------------
-        await _step_event("analysis", "Domain and audience analysis")
-        
+        await _step_event("dcaa", "Analysing political context")
+        await _step_event("demcaa", "Analysing audience perspective")
+
         # Run DCAA and DEMCAA in parallel since they don't depend on each other
         async def run_dcaa():
             try:
@@ -75,27 +81,27 @@ class BriefAgent(BaseAgent):
             except Exception as exc:
                 self.log.warning("brief.dcaa_failed", error=str(exc))
                 return None
-        
+
         async def run_demcaa():
             try:
                 return await DEMCAA().run(ctx)
             except Exception as exc:
                 self.log.warning("brief.demcaa_failed", error=str(exc))
                 return None
-        
+
         # Execute both agents in parallel
         dcaa_task = asyncio.create_task(run_dcaa())
         demcaa_task = asyncio.create_task(run_demcaa())
-        
+
         # Wait for both to complete
         dcaa_result, demcaa_result = await asyncio.gather(dcaa_task, demcaa_task)
-        
+
         if dcaa_result:
             ctx.upstream["DCAA"] = dcaa_result
+            await _done_event("dcaa")
         if demcaa_result:
             ctx.upstream["DEMCAA"] = demcaa_result
-            
-        await _done_event("analysis")
+            await _done_event("demcaa")
 
         await _step_event("brief", "Synthesising brief")
 
@@ -107,18 +113,13 @@ class BriefAgent(BaseAgent):
         sources_payload = (sga_payload.get("sources") or [])[:12]  # cap context
         valid_urls = {s.get("url") for s in sources_payload if s.get("url")}
 
-        identity_payload = (
-            ctx.upstream["PIDAA"].payload if "PIDAA" in ctx.upstream else {}
-        )
+        identity_payload = ctx.upstream["PIDAA"].payload if "PIDAA" in ctx.upstream else {}
         # Trim identity to keep prompt under rate limits
         identity_compact = self._compact_identity(identity_payload)
 
-        domain_payload = (
-            ctx.upstream["DCAA"].payload if "DCAA" in ctx.upstream else {}
-        )
-        demo_payload = (
-            ctx.upstream["DEMCAA"].payload if "DEMCAA" in ctx.upstream else {}
-        )
+        domain_payload = ctx.upstream["DCAA"].payload if "DCAA" in ctx.upstream else {}
+        demo_payload = ctx.upstream["DEMCAA"].payload if "DEMCAA" in ctx.upstream else {}
+        competitors = await self._load_competitors(ctx)
 
         user_msg = (
             f"## Principal identity\n{json.dumps(identity_compact, ensure_ascii=False)}\n\n"
@@ -126,6 +127,7 @@ class BriefAgent(BaseAgent):
             f"{json.dumps(sources_payload, ensure_ascii=False)}\n\n"
             f"## Domain briefing (DCAA)\n{json.dumps(domain_payload, ensure_ascii=False)}\n\n"
             f"## Demographic briefing (DEMCAA)\n{json.dumps(demo_payload, ensure_ascii=False)}\n\n"
+            f"## Competitive landscape\n{json.dumps(competitors, ensure_ascii=False)}\n\n"
             "Produce the Brief JSON object per the system contract. "
             "Every sources[].url MUST be one of the URLs in the source pack above."
         )
@@ -135,7 +137,7 @@ class BriefAgent(BaseAgent):
             system=system,
             messages=[{"role": "user", "content": user_msg}],
             tier=ModelTier.default,
-            max_tokens=3600,
+            max_tokens=1800,
             run_id=ctx.run_id,
             json_mode=True,
             temperature=0.35,
@@ -158,7 +160,7 @@ class BriefAgent(BaseAgent):
             )
 
         # --- 5. Auto-escalate to Opus if low confidence -----------------------
-        if parsed is None or parsed["confidence"] < 0.6:
+        if parsed is None:
             try:
                 escalate = await llm.complete(
                     agent=self.name,
@@ -176,7 +178,7 @@ class BriefAgent(BaseAgent):
                         },
                     ],
                     tier=ModelTier.escalate,
-                    max_tokens=3800,
+                    max_tokens=1800,
                     run_id=ctx.run_id,
                     json_mode=True,
                     temperature=0.3,
@@ -196,17 +198,15 @@ class BriefAgent(BaseAgent):
                 self.log.warning("brief.opus_skip", reason=str(exc))
 
         if parsed is None:
-            self.log.error(
-                "brief.fallback_used",
-                reason="both Sonnet and Opus passes failed to produce parseable JSON",
-            )
-            parsed = self._fallback_brief()
+            raise ValueError("LLM returned no valid brief JSON after synthesis and escalation")
 
         await _done_event("brief")
 
         # --- 6. Persist PrincipalBrief row ------------------------------------
         profile_id_str = ctx.extra.get("profile_id") if isinstance(ctx.extra, dict) else None
-        run_id_str = ctx.run_id if isinstance(ctx.run_id, str) else (str(ctx.run_id) if ctx.run_id else None)
+        run_id_str = (
+            ctx.run_id if isinstance(ctx.run_id, str) else (str(ctx.run_id) if ctx.run_id else None)
+        )
         brief_row_id: str | None = None
         if profile_id_str:
             try:
@@ -275,7 +275,8 @@ class BriefAgent(BaseAgent):
                 return
             payload = {
                 "full_name": (pi.basics or {}).get("full_name", "")
-                or (ctx.extra.get("full_name") if isinstance(ctx.extra, dict) else "") or "",
+                or (ctx.extra.get("full_name") if isinstance(ctx.extra, dict) else "")
+                or "",
                 "basics": pi.basics or {},
                 "family": pi.family or {},
                 "education": pi.education or {},
@@ -296,12 +297,45 @@ class BriefAgent(BaseAgent):
                 payload=payload,
             )
 
+    async def _load_competitors(self, ctx: AgentContext) -> list[dict[str, Any]]:
+        """Load the latest persisted, model-generated competitor analysis."""
+        profile_id_raw = ctx.extra.get("profile_id") if isinstance(ctx.extra, dict) else None
+        if not profile_id_raw:
+            return []
+        try:
+            profile_id = UUID(str(profile_id_raw))
+        except (TypeError, ValueError):
+            return []
+        async with session_scope() as db:
+            res = await db.execute(
+                select(Competitor)
+                .where(Competitor.profile_id == profile_id)
+                .order_by(Competitor.match_score.desc().nullslast())
+                .limit(5)
+            )
+            return [
+                {
+                    "name": row.name,
+                    "party": row.party,
+                    "match_score": row.match_score,
+                    "reasoning": row.reasoning,
+                    "overlap_areas": row.overlap_areas,
+                }
+                for row in res.scalars().all()
+            ]
+
     @staticmethod
     def _compact_identity(p: dict[str, Any]) -> dict[str, Any]:
         """Trim PIDAA payload to keep prompt size reasonable."""
         keep = [
-            "full_name", "basics", "current_position", "party_history",
-            "electoral_record", "policy_stances", "controversies", "network",
+            "full_name",
+            "basics",
+            "current_position",
+            "party_history",
+            "electoral_record",
+            "policy_stances",
+            "controversies",
+            "network",
             "coverage_gaps",
         ]
         return {k: p.get(k) for k in keep if p.get(k) is not None}
@@ -375,16 +409,15 @@ class BriefAgent(BaseAgent):
             reasoning = str(payload.get("reasoning") or "")
             confidence = float(payload.get("confidence") or 0.5)
 
-            # Lenient acceptance: only reject if literally every key field is empty.
-            if not action_card.what and not top_risk.label and not top_opportunity.label:
+            # Do not manufacture defaults for incomplete model output. A brief is
+            # publishable only when the model produced a complete, source-backed view.
+            if (
+                not action_card.what
+                or not top_risk.label
+                or not top_opportunity.label
+                or not sources
+            ):
                 return None
-            # Backfill any missing label so the UI never shows an empty card.
-            if not top_risk.label:
-                top_risk.label = "(top risk not identified)"
-            if not top_opportunity.label:
-                top_opportunity.label = "(top opportunity not identified)"
-            if not action_card.what:
-                action_card.what = "Hold posture; reassess after fresh source pull."
 
             return {
                 "top_risk": top_risk,
@@ -397,38 +430,3 @@ class BriefAgent(BaseAgent):
             }
         except (TypeError, ValueError):
             return None
-
-    @staticmethod
-    def _fallback_brief() -> dict[str, Any]:
-        return {
-            "top_risk": TopRisk(
-                label="Insufficient signal — defer high-risk moves",
-                severity=0.4,
-                summary="The brief pipeline could not surface a confident top risk this run. Hold posture.",
-                time_horizon="next 7 days",
-            ),
-            "top_opportunity": TopOpportunity(
-                label="Re-run after coverage gaps are filled",
-                magnitude=0.3,
-                summary="Coverage is too thin to identify a confident opportunity. Re-run after fresh sources.",
-                time_horizon="next 7 days",
-            ),
-            "topics": [],
-            "action_card": BriefActionCard(
-                what="Hold — do not initiate public messaging in the next 24 hours.",
-                who="Principal + chief of staff only.",
-                where="Internal only.",
-                when="Next 24h; reassess after fresh source pull.",
-                how="Silent monitoring. Pre-clear two contingency statements.",
-                proof="None required.",
-                avoid="Any social post, any spokesperson statement, any leak.",
-                confidence=0.3,
-                success_kpis=[
-                    "No new broadcast pickup before next reassessment",
-                    "No unforced narrative drift",
-                ],
-            ),
-            "sources": [],
-            "reasoning": "Fallback brief: synthesis pass did not produce a usable JSON payload.",
-            "confidence": 0.3,
-        }

@@ -1,4 +1,5 @@
 """Personal Profile — principal's public identity record (created by superadmin via PIDAA)."""
+
 from typing import Any
 
 from sqlalchemy import String

@@ -1,20 +1,20 @@
 """Superadmin console endpoints.
 
-Authentication: PSP26 code → superadmin JWT (role=superadmin).
-All other routes in this file require that JWT via SuperadminToken dep.
+Admin console endpoints. All protected routes require an authenticated admin JWT.
 """
+
 from __future__ import annotations
 
+import re
 import secrets
 import string
 import uuid
-from datetime import UTC, timedelta, datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import DbSession, SuperadminToken
 from app.agents.disambiguation import run_disambiguation
+from app.api.deps import AdminToken, DbSession
 from app.contexts import default_pack_id
 from app.models.principal_identity import PrincipalIdentity
 from app.models.profile import Profile
@@ -29,18 +29,12 @@ from app.schemas.superadmin import (
     PrincipalDetail,
     PrincipalIdentitySection,
     PrincipalSummary,
-    SuperadminVerifyIn,
-    SuperadminVerifyOut,
 )
-from app.security import create_access_token, hash_password
+from app.security import hash_password
 from app.services.orchestrator import execute_run
 
-import re
+router = APIRouter(prefix="/admin", tags=["admin"])
 
-router = APIRouter(prefix="/superadmin", tags=["superadmin"])
-
-_SUPERADMIN_CODE = "PSP26"
-_SUPERADMIN_JWT_HOURS = 4
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
 _PWD_CHARS = string.ascii_letters + string.digits
 
@@ -57,37 +51,18 @@ def _generate_password(length: int = 16) -> str:
 
 def _make_username(full_name: str) -> str:
     parts = full_name.lower().split()
-    if len(parts) >= 2:
-        base = f"{parts[0][0]}{parts[-1]}"
-    else:
-        base = parts[0] if parts else "user"
+    base = f"{parts[0][0]}{parts[-1]}" if len(parts) >= 2 else parts[0] if parts else "user"
     base = _SLUG_STRIP.sub("", base)
     return f"{base}{secrets.token_hex(3)}"
 
 
-# --- Auth --------------------------------------------------------------------
-
-@router.post("/verify", response_model=SuperadminVerifyOut)
-async def verify_superadmin(payload: SuperadminVerifyIn) -> SuperadminVerifyOut:
-    """Exchange the superadmin code for a short-lived JWT."""
-    if payload.code != _SUPERADMIN_CODE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid superadmin code")
-    token = create_access_token(
-        subject="superadmin",
-        extra={
-            "role": "superadmin",
-            "exp": int((datetime.now(UTC) + timedelta(hours=_SUPERADMIN_JWT_HOURS)).timestamp()),
-        },
-    )
-    return SuperadminVerifyOut(token=token)
-
-
 # --- Disambiguation ----------------------------------------------------------
+
 
 @router.post("/disambiguate", response_model=IdentityCandidate)
 async def disambiguate(
     payload: DisambiguateIn,
-    _sa: SuperadminToken,
+    _sa: AdminToken,
 ) -> IdentityCandidate:
     """Run a quick identity-disambiguation lookup. Stateless — does not create any DB rows."""
     return await run_disambiguation(payload.name_query, payload.hint)
@@ -95,11 +70,12 @@ async def disambiguate(
 
 # --- Principal creation ------------------------------------------------------
 
+
 @router.post("/principals", response_model=CreatePrincipalOut, status_code=status.HTTP_201_CREATED)
 async def create_principal(
     payload: CreatePrincipalIn,
     db: DbSession,
-    _sa: SuperadminToken,
+    _sa: AdminToken,
     background: BackgroundTasks,
 ) -> CreatePrincipalOut:
     """Confirm a candidate and kick off the full PIDAA build.
@@ -159,6 +135,7 @@ async def create_principal(
     pi = PrincipalIdentity(
         profile_id=profile.id,
         status="pending",
+        profile_image_url=c.photo_url,
     )
     db.add(pi)
     await db.flush()
@@ -204,11 +181,10 @@ async def create_principal(
 
 # --- Principal management ----------------------------------------------------
 
+
 @router.get("/principals", response_model=list[PrincipalSummary])
-async def list_principals(db: DbSession, _sa: SuperadminToken) -> list[PrincipalSummary]:
-    profiles_res = await db.execute(
-        select(Profile).order_by(Profile.created_at.desc())
-    )
+async def list_principals(db: DbSession, _sa: AdminToken) -> list[PrincipalSummary]:
+    profiles_res = await db.execute(select(Profile).order_by(Profile.created_at.desc()))
     profiles = profiles_res.scalars().all()
 
     result: list[PrincipalSummary] = []
@@ -221,17 +197,25 @@ async def list_principals(db: DbSession, _sa: SuperadminToken) -> list[Principal
         user_res = await db.execute(select(User).where(User.principal_id == p.id))
         u = user_res.scalar_one_or_none()
 
-        result.append(PrincipalSummary(
-            profile_id=p.id,
-            identity_id=pi.id if pi else uuid.UUID(int=0),
-            full_name=p.full_name,
-            role_title=p.role_title,
-            party=p.party,
-            pack_id=p.pack_id,
-            pidaa_status=pi.status if pi else "no_identity",
-            built_at=pi.built_at.isoformat() if (pi and pi.built_at) else None,
-            username=u.username if u else "—",
-        ))
+        result.append(
+            PrincipalSummary(
+                profile_id=p.id,
+                identity_id=pi.id if pi else uuid.UUID(int=0),
+                full_name=p.full_name,
+                role_title=p.role_title,
+                party=p.party,
+                pack_id=p.pack_id,
+                pidaa_status=pi.status if pi else "no_identity",
+                built_at=pi.built_at.isoformat() if (pi and pi.built_at) else None,
+                username=u.username if u else "—",
+                profile_image_url=pi.profile_image_url if pi else None,
+                overview=(
+                    pi.basics.get("summary") or pi.basics.get("bio") or pi.basics.get("description")
+                )
+                if pi
+                else None,
+            )
+        )
     return result
 
 
@@ -239,7 +223,7 @@ async def list_principals(db: DbSession, _sa: SuperadminToken) -> list[Principal
 async def get_principal(
     profile_id: uuid.UUID,
     db: DbSession,
-    _sa: SuperadminToken,
+    _sa: AdminToken,
 ) -> PrincipalDetail:
     prof_res = await db.execute(select(Profile).where(Profile.id == profile_id))
     p = prof_res.scalar_one_or_none()
@@ -255,6 +239,7 @@ async def get_principal(
     u = user_res.scalar_one_or_none()
 
     identity = PrincipalIdentitySection(
+        profile_image_url=pi.profile_image_url if pi else None,
         basics=pi.basics if pi else {},
         family=pi.family if pi else {},
         education=pi.education if pi else {},
@@ -280,6 +265,10 @@ async def get_principal(
         username=u.username if u else "—",
         pidaa_status=pi.status if pi else "no_identity",
         built_at=pi.built_at.isoformat() if (pi and pi.built_at) else None,
+        profile_image_url=pi.profile_image_url if pi else None,
+        overview=(pi.basics.get("summary") or pi.basics.get("bio") or pi.basics.get("description"))
+        if pi
+        else None,
         identity=identity,
     )
 
@@ -288,7 +277,7 @@ async def get_principal(
 async def rerun_pidaa(
     profile_id: uuid.UUID,
     db: DbSession,
-    _sa: SuperadminToken,
+    _sa: AdminToken,
     background: BackgroundTasks,
 ) -> dict:
     """Re-queue a PIDAA build for an existing principal."""
@@ -318,7 +307,11 @@ async def rerun_pidaa(
             "pack_id": p.pack_id,
             "profile_id": str(profile_id),
             "identity_id": str(pi.id) if pi else None,
-            "confirmed_candidate": {"full_name": p.full_name, "current_role": p.role_title, "party": p.party},
+            "confirmed_candidate": {
+                "full_name": p.full_name,
+                "current_role": p.role_title,
+                "party": p.party,
+            },
         },
     )
     db.add(run)
@@ -332,7 +325,7 @@ async def rerun_pidaa(
 async def archive_principal(
     profile_id: uuid.UUID,
     db: DbSession,
-    _sa: SuperadminToken,
+    _sa: AdminToken,
 ) -> None:
     """Hard-delete a principal and all related data."""
     prof_res = await db.execute(select(Profile).where(Profile.id == profile_id))
@@ -345,9 +338,8 @@ async def archive_principal(
     if u:
         # Delete UserProfile first so the ORM doesn't try to NULL the FK before the User delete
         from app.models.user_profile import UserProfile
-        up_res = await db.execute(
-            select(UserProfile).where(UserProfile.user_id == str(u.id))
-        )
+
+        up_res = await db.execute(select(UserProfile).where(UserProfile.user_id == str(u.id)))
         up = up_res.scalar_one_or_none()
         if up:
             await db.delete(up)

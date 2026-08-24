@@ -7,6 +7,7 @@ Each agent declares:
 
 Subclasses implement `_run(ctx)` returning an AgentResult.
 """
+
 from __future__ import annotations
 
 import time
@@ -46,8 +47,7 @@ class BaseAgent(ABC):
         self.log = structlog.get_logger(self.name)
 
     @abstractmethod
-    async def _run(self, ctx: AgentContext) -> AgentResult:
-        ...
+    async def _run(self, ctx: AgentContext) -> AgentResult: ...
 
     async def run(self, ctx: AgentContext) -> AgentResult:
         await publish_event(
