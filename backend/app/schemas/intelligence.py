@@ -397,6 +397,7 @@ class AnalysisCenterOut(BaseModel):
     coverage: dict[str, Any]
     evidence: list[dict[str, Any]]
     provider_status: dict[str, Any]
+    activity_metrics: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EvidenceExplorerOut(BaseModel):

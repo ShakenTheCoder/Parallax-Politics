@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.intelligence.activity_monitor import collect_political_activity
 from app.intelligence.free_feeds import collect_free_feeds
+from app.intelligence.principal_analytics import project_principal_analytics
 from app.intelligence.service import collect_source
 from app.models.intelligence import CollectionSource, CollectionSubscription
 from app.models.user import User
@@ -155,3 +156,8 @@ async def run_political_activity_monitor(ctx: dict[Any, Any]) -> int:
                 error_count=len(result.errors),
             )
         return result.activities_created
+
+
+async def run_principal_analytics(ctx: dict[Any, Any]) -> int:
+    """Project current database evidence for the principal command center."""
+    return await project_principal_analytics(ctx)

@@ -693,6 +693,7 @@ export type AnalysisCenter = {
   coverage: CoverageReport;
   evidence: { id: string; title: string; url: string; source: string; published_at: string | null; captured_at: string; layer: string; rights: string; geography: string; classification_confidence: number; observation_type: string }[];
   provider_status: Record<string, string>;
+  activity_metrics?: { key: string; label: string; value: number; window: string }[];
 };
 
 export type ScenarioComparison = {

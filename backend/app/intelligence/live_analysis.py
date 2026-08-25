@@ -13,6 +13,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.intelligence.brief_watchlist import normalize_public_name
 from app.intelligence.principal_scope import resolve_principal
 from app.intelligence.watchlist import WATCHLIST
 from app.models.intelligence import IntelligenceSnapshot, SignalEvent
@@ -62,6 +63,15 @@ async def build_analysis_center(
     by_slug = {figure.slug: figure for figure in figures}
     activities = list((await db.execute(select(PoliticalActivity).where(PoliticalActivity.occurred_at >= previous_start))).scalars().all())
     signals = list((await db.execute(select(SignalEvent).where(func.coalesce(SignalEvent.published_at, SignalEvent.observed_at) >= start))).scalars().all())
+    principal_name = normalize_public_name(principal.full_name)
+    principal_figure_ids = {
+        figure.id
+        for figure in figures
+        if principal_name == normalize_public_name(figure.canonical_name)
+        or any(principal_name == normalize_public_name(alias) for alias in (figure.aliases or []))
+    }
+    principal_activities = [row for row in activities if row.figure_id in principal_figure_ids]
+    principal_signals = [row for row in signals if row.subject_id == principal.id]
 
     core: list[dict[str, Any]] = []
     core_ids: set[UUID] = set()
@@ -87,15 +97,15 @@ async def build_analysis_center(
         for f in figures if f.id not in core_ids
     ]
     source_counts: dict[str, int] = {}
-    for row in activities:
+    for row in principal_activities:
         if row.occurred_at >= start:
             source_counts[row.publisher] = source_counts.get(row.publisher, 0) + 1
     latest_snapshot = (await db.execute(select(IntelligenceSnapshot).where(IntelligenceSnapshot.subject_id == principal.id, IntelligenceSnapshot.kind == "principal_analysis").order_by(IntelligenceSnapshot.effective_at.desc()).limit(1))).scalar_one_or_none()
     latest_poll = (await db.execute(select(Poll).where(Poll.verification_status == "verified").order_by(Poll.published_at.desc()).limit(1))).scalar_one_or_none()
-    evidence = [_evidence(row) for row in [*activities[-20:], *signals[-20:]]]
+    evidence = [_evidence(row) for row in [*principal_activities[-20:], *principal_signals[-20:]]]
     evidence.sort(key=lambda row: row["captured_at"], reverse=True)
-    status = "live" if activities or signals else "unavailable"
-    if activities and not signals:
+    status = "live" if principal_activities or principal_signals else "unavailable"
+    if principal_activities and not principal_signals:
         status = "partial"
     payload = {
         "snapshot": {"kind": "principal_analysis", "effective_at": now.isoformat(), "produced_by": "database_projection", "mode": status, "window": window, "notice": "Only persisted source-backed evidence is included; absent analytics remain null."},
@@ -107,6 +117,7 @@ async def build_analysis_center(
         "narratives": [], "appearances": [], "audience_lab": [], "latest_poll": ({"pollster": latest_poll.pollster, "published_at": latest_poll.published_at.isoformat(), "field_dates": f"{latest_poll.field_start.isoformat()}–{latest_poll.field_end.isoformat()}", "sample": latest_poll.sample_size, "population": latest_poll.population, "mode": latest_poll.mode, "margin_of_error": latest_poll.margin_of_error, "question": latest_poll.exact_question, "source_url": latest_poll.source_url, "results": latest_poll.results, "layer": "polling"} if latest_poll else None),
         "coverage": {"status": status, "window": window, "evidence_count": len(evidence), "note": "Coverage is computed from persisted records; no denominator is inferred."},
         "evidence": evidence, "provider_status": {"status": status, "source": "database"},
+        "activity_metrics": [{"key": key, "label": key.replace("_", " ").title(), "value": sum(1 for row in principal_activities if (row.appearance_type in {"appearance", "broadcast_appearance", "interview", "public_appearance"} if key == "direct_appearances" else row.evidence_layer == key.removesuffix("s"))), "window": window} for key in ("direct_appearances", "public_statements", "indirect_coverage", "public_reactions")],
     }
     return AnalysisCenterOut.model_validate(payload)
 

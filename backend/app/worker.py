@@ -10,6 +10,7 @@ from app.intelligence.jobs import (
     run_due_collections,
     run_free_feed_collection,
     run_political_activity_monitor,
+    run_principal_analytics,
 )
 from app.services.brief_runs import run_daily_briefs
 
@@ -38,6 +39,14 @@ class WorkerSettings:
             second=10,
             run_at_startup=True,
             timeout=900,
+            max_tries=1,
+        ),
+        cron(
+            run_principal_analytics,
+            minute={0, 15, 30, 45},
+            second=25,
+            run_at_startup=True,
+            timeout=120,
             max_tries=1,
         ),
         cron(
