@@ -399,7 +399,7 @@ async def collect_source(
         provenance={
             "authority": source_cfg.authority,
             "connector": source_cfg.connector_kind,
-            "collector": "scrapling-parser/httpx-safe-fetch-v1",
+            "collector": "scrapling-stealth-browser/safe-route-guard-v1",
             "content_type": document.content_type,
             "captured_at": now.isoformat(),
             "observed_at": now.isoformat(),

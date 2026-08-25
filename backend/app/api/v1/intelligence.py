@@ -1,8 +1,9 @@
 """Authenticated political-intelligence control-plane endpoints."""
 
+from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import AdminUser, CurrentUser, DbSession
 from app.intelligence.activity_monitor import (
@@ -14,12 +15,12 @@ from app.intelligence.activity_sources import bootstrap_activity_sources
 from app.intelligence.brief_view import build_brief_view
 from app.intelligence.fleet import AGENT_FLEET
 from app.intelligence.free_feeds import bootstrap_free_feeds, collect_free_feeds
+from app.intelligence.live_analysis import build_analysis_center, build_command_view
 from app.intelligence.momentum import (
     COMPONENT_WEIGHTS,
     MOMENTUM_VERSION,
     RANK_COVERAGE_THRESHOLD,
 )
-from app.intelligence.poc import EFFECTIVE_AT, analysis_center, command_view, compare_variants
 from app.intelligence.service import (
     collect_source,
     create_collection_source,
@@ -78,8 +79,8 @@ async def get_overview(db: DbSession, user: CurrentUser) -> IntelligenceOverview
 
 
 @router.get("/command", response_model=CommandViewOut, deprecated=True)
-async def get_command_view(_user: CurrentUser) -> CommandViewOut:
-    return CommandViewOut.model_validate(command_view())
+async def get_command_view(db: DbSession, user: CurrentUser, profile_id: UUID | None = None) -> CommandViewOut:
+    return await build_command_view(db, user, profile_id)
 
 
 @router.get("/brief", response_model=BriefViewOut)
@@ -87,14 +88,17 @@ async def get_brief_view(
     db: DbSession,
     user: CurrentUser,
     window: ActivityWindow = "24h",
+    profile_id: UUID | None = None,
 ) -> BriefViewOut:
     """Return the mobile 30-second Brief without fixture substitution."""
-    return await build_brief_view(db, user, activity_window=window)
+    return await build_brief_view(db, user, activity_window=window, profile_id=profile_id)
 
 
 @router.get("/analysis", response_model=AnalysisCenterOut)
-async def get_analysis_center(_user: CurrentUser) -> AnalysisCenterOut:
-    return AnalysisCenterOut.model_validate(analysis_center())
+async def get_analysis_center(
+    db: DbSession, user: CurrentUser, window: ActivityWindow = "7d", profile_id: UUID | None = None
+) -> AnalysisCenterOut:
+    return await build_analysis_center(db, user, window=window, profile_id=profile_id)
 
 
 @router.get("/activity-monitor", response_model=PoliticalActivityMonitorOut)
@@ -131,19 +135,20 @@ async def run_activity_monitor(db: DbSession, _admin: AdminUser) -> PoliticalAct
 
 
 @router.get("/appearances", response_model=AppearanceListOut)
-async def get_appearances(_user: CurrentUser) -> AppearanceListOut:
-    payload = analysis_center()
+async def get_appearances(db: DbSession, user: CurrentUser, window: ActivityWindow = "24h", profile_id: UUID | None = None) -> AppearanceListOut:
+    payload = (await build_analysis_center(db, user, window=window, profile_id=profile_id)).model_dump()
     return AppearanceListOut(
-        snapshot_effective_at=EFFECTIVE_AT,
+        snapshot_effective_at=datetime.now(UTC),
         appearances=payload["appearances"],
     )
 
 
 @router.get("/evidence", response_model=EvidenceExplorerOut)
-async def get_evidence(_user: CurrentUser) -> EvidenceExplorerOut:
-    signals = analysis_center()["evidence"]
+async def get_evidence(db: DbSession, user: CurrentUser, window: ActivityWindow = "7d", profile_id: UUID | None = None) -> EvidenceExplorerOut:
+    payload = (await build_analysis_center(db, user, window=window, profile_id=profile_id)).model_dump()
+    signals = payload["evidence"]
     return EvidenceExplorerOut(
-        snapshot_effective_at=EFFECTIVE_AT,
+        snapshot_effective_at=datetime.now(UTC),
         signals=signals,
         count=len(signals),
     )
@@ -169,9 +174,7 @@ async def compare_scenario_variants(
     payload: ScenarioComparisonCreate,
     _user: CurrentUser,
 ) -> ScenarioComparisonOut:
-    return ScenarioComparisonOut.model_validate(
-        compare_variants([item.model_dump() for item in payload.variants])
-    )
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail="Deterministic scenario comparison has been retired; use audience experiments")
 
 
 @router.get("/sources", response_model=list[CollectionSourceOut])

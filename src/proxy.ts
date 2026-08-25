@@ -8,7 +8,7 @@ export function proxy(request: NextRequest) {
 
   // The backend remains the authorization authority; Proxy only rejects clearly
   // unauthenticated navigation before client code renders protected pages.
-  const protectedRoute = ["/admin", "/identity", "/brief", "/audience", "/intelligence"].some(
+  const protectedRoute = ["/admin", "/identity", "/brief", "/audience", "/analysis"].some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
   if (protectedRoute) {

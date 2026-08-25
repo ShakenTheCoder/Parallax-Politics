@@ -9,16 +9,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.intelligence.activity_monitor import monitoring_state, window_hours
 from app.intelligence.brief_watchlist import resolve_brief_watchlist
+from app.intelligence.principal_scope import resolve_principal
 from app.models.intelligence import IntelligenceSnapshot, SignalEvent
 from app.models.political_activity import PoliticalActivity
 from app.models.principal_identity import PrincipalIdentity
-from app.models.profile import Profile
 from app.models.user import User
 from app.schemas.intelligence import (
     ActivityWindow,
@@ -79,16 +78,13 @@ def _opinion(snapshot: IntelligenceSnapshot) -> BriefMediaOpinionOut | None:
 
 
 async def build_brief_view(
-    db: AsyncSession, user: User, *, activity_window: ActivityWindow = "24h"
+    db: AsyncSession,
+    user: User,
+    *,
+    activity_window: ActivityWindow = "24h",
+    profile_id=None,
 ) -> BriefViewOut:
-    if not user.principal_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No principal linked to this account",
-        )
-    principal = await db.get(Profile, user.principal_id)
-    if not principal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Principal not found")
+    principal = await resolve_principal(db, user, profile_id)
     principal_identity = (
         await db.execute(
             select(PrincipalIdentity).where(PrincipalIdentity.profile_id == principal.id)

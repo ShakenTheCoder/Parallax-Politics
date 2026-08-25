@@ -13,7 +13,7 @@ Parallax Politics is at an integrated frontend/backend implementation checkpoint
 ### Frontend
 
 - Next.js 16.2.6 App Router application with server-only backend proxying and HttpOnly session cookies.
-- User-facing routes include `/`, `/login`, `/brief`, `/identity`, `/audience`, `/intelligence`, and `/auth`.
+- User-facing routes include `/`, `/login`, `/brief`, `/identity`, `/audience`, `/analysis`, and `/auth`.
 - Administrative routes include `/admin` and `/superadmin/enter`.
 - New or expanded views cover principal identity review, audience instructions, intelligence overview, sources, subscriptions, scenarios, and verdict review.
 - Existing design direction remains documented in `UI-AESTHETIC.md` and `UI-ELEMENTS.md`.
@@ -79,3 +79,11 @@ make typecheck
 ```
 
 Runtime analytical calls now require provider responses. There is no LLM/EXA mock mode or deterministic synthetic result path. Do not commit `.env` files or credentials; only the checked-in `.env.example` files are intended for configuration guidance.
+
+## Principal command-center completion
+
+- Analysis, evidence, and appearance projections are database-backed and principal-scoped.
+- Poll releases have strict provenance fields, admin verification, and a seeded reviewed Pulse Asia record.
+- Audience Lab runs three provider-backed samples across all configured cohorts and variants; failures are persisted as unavailable.
+- Principal briefs persist `agent_draft`, `approved`, or `rejected` review state. Only superadmins can review.
+- Migration head for these capabilities: `t3e4f5a6b7c8`.

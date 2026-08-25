@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 from pydantic import ValidationError
+from scrapling.engines.toolbelt.custom import Response
 
-from app.intelligence.collector import SafePublicWebCollector
+from app.intelligence import collector as collector_module
+from app.intelligence.collector import SafePublicWebCollector, _BrowserRequestGuard
 from app.intelligence.policy import (
     CollectionPolicyError,
     enforce_cohort_privacy,
@@ -40,6 +45,77 @@ def test_sparse_cohort_is_suppressed() -> None:
 
 def test_collector_normalizes_untrusted_page_text() -> None:
     assert SafePublicWebCollector._clean_text("  one\n\t two   three ") == "one two three"
+
+
+async def test_public_collection_uses_scrapling_stealth_fetcher(monkeypatch) -> None:
+    fetch_calls: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_fetch(url: str, **kwargs: object) -> Response:
+        fetch_calls.append((url, kwargs))
+        challenged = len(fetch_calls) == 1
+        return Response(
+            url=url,
+            content=(
+                "<html><head><title>Just a moment...</title></head><body>cf-chl-test</body></html>"
+                if challenged
+                else (
+                    "<html><head><title>Public report</title></head>"
+                    "<body>Enough readable public text for the bounded collection test fixture.</body>"
+                    "</html>"
+                )
+            ),
+            status=403 if challenged else 200,
+            reason="Forbidden" if challenged else "OK",
+            cookies={},
+            headers={"content-type": "text/html; charset=utf-8"},
+            request_headers={},
+            huge_tree=False,
+            adaptive=False,
+        )
+
+    monkeypatch.setattr(collector_module, "validate_public_destination", AsyncMock())
+    collector = SafePublicWebCollector(browser_fetch=fake_fetch)
+    monkeypatch.setattr(collector, "_robots_allowed", AsyncMock(return_value=True))
+
+    document = await collector.collect(
+        base_url="https://official.example",
+        path="/news/report",
+        allowed_paths=["/news/"],
+        robots_observed=True,
+    )
+
+    assert document.title == "Public report"
+    assert len(fetch_calls) == 2
+    _, first_options = fetch_calls[0]
+    _, options = fetch_calls[1]
+    assert first_options["solve_cloudflare"] is False
+    assert options["solve_cloudflare"] is True
+    assert options["hide_canvas"] is True
+    assert options["block_webrtc"] is True
+    assert options["load_dom"] is True
+    assert options["google_search"] is False
+    assert options["additional_args"] == {"service_workers": "block"}
+    assert callable(options["page_setup"])
+
+
+async def test_stealth_browser_guard_blocks_cross_origin_navigation(monkeypatch) -> None:
+    monkeypatch.setattr(collector_module, "validate_public_destination", AsyncMock())
+    guard = _BrowserRequestGuard("https://official.example", ["/news/"])
+    route = SimpleNamespace(
+        request=SimpleNamespace(
+            url="https://attacker.example/news/report",
+            is_navigation_request=lambda: True,
+        ),
+        abort=AsyncMock(),
+        fallback=AsyncMock(),
+    )
+
+    await guard.handle(route)
+
+    route.abort.assert_awaited_once_with("blockedbyclient")
+    route.fallback.assert_not_awaited()
+    assert guard.violation is not None
+    assert "registered source" in str(guard.violation)
 
 
 def test_public_collection_requires_scrapling_and_robots_policy() -> None:

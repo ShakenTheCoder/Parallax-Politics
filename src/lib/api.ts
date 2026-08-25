@@ -253,6 +253,7 @@ export type BriefSummary = {
   action_what: string;
   confidence: number;
   cost_usd: number;
+  review_status: "agent_draft" | "approved" | "rejected";
 };
 
 export type BriefOut = {
@@ -270,6 +271,45 @@ export type BriefOut = {
   cost_usd: number;
   confidence: number;
   command_view?: CommandView | null;
+  review_status: "agent_draft" | "approved" | "rejected";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+};
+
+export type PollRecord = {
+  id: string;
+  pollster: string;
+  sponsor: string | null;
+  published_at: string;
+  field_start: string;
+  field_end: string;
+  sample_size: number;
+  population: string;
+  mode: string;
+  margin_of_error: string;
+  confidence_level: string | null;
+  exact_question: string;
+  geography: string;
+  results: { name: string; value?: number; share?: number }[];
+  source_url: string;
+  verification_status: string;
+};
+
+export type AudienceExperiment = {
+  id: string;
+  run_id: string;
+  profile_id: string;
+  variants: { id: string; title: string; message: string }[];
+  cohorts: { id: string; label: string; basis: string }[];
+  status: string;
+  provider_status: string;
+  samples: Record<string, unknown>[];
+  aggregate: Record<string, unknown>;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 };
 
 export type BriefGenerateOut = {
@@ -628,24 +668,11 @@ export type PoliticalActivityCollection = {
   errors: string[];
 };
 
-export type PollRecord = {
-  pollster: string;
-  published_at?: string;
-  field_dates: string;
-  sample: number;
-  population?: string;
-  mode?: string;
-  margin_of_error: string;
-  question?: string;
-  source_url?: string;
-  layer?: string;
-  results?: { name: string; value: number }[];
-};
-
 export type CoverageReport = {
   confidence: number;
   threshold?: number;
   rank_suppressed: boolean;
+  note?: string;
   families?: { name: string; status: string; score: number; freshness: string | null; action: string }[];
   missing_sources: string[];
 };
@@ -654,14 +681,15 @@ export type AnalysisCenter = {
   snapshot: { effective_at: string; mode: string; notice: string; model_version: string; [key: string]: unknown };
   election: { label: string; date: string; official_calendar_status: string; watchlist_label: string };
   command_view: CommandView;
-  momentum_components: { key: string; label: string; weight: number; score: number; delta: number }[];
+  momentum_components: { key: string; label: string; weight: number | null; score: number | null; delta: number | null }[];
   timeline: { date: string; values: Record<string, number> }[];
-  watchlist: { slug: string; name: string; office: string; poll: number; strongest_channel: string; issue: string; watch_status: string; rank: number | null; momentum: number; movement: number; earned_visibility: number; cadence: string }[];
-  channels: { name: string; score: number | null; coverage: number; comparison: string }[];
+  watchlist: { slug: string; name: string; office: string | null; watch_status: string; rank: number | null; momentum: number | null; movement: number | null; strongest_channel: string | null; issue: string | null; cadence: string; activity_current?: number; activity_previous?: number; evidence_status?: string }[];
+  national_radar?: { slug: string; name: string; office: string | null; activity_current: number; evidence_status: string }[];
+  channels: { name: string; score: number | null; coverage: number | null; comparison: string }[];
   narratives: { name: string; stage: string; velocity: number; owner: string; source_diversity: number; evidence_ids: string[] }[];
   appearances: { id: string; title: string; figure: string; occurred_at: string; source_status: string; topics: { label: string; share: number }[]; message_consistency: number; quote_pickup: number; lift: Record<string, number>; evidence_ids: string[] }[];
   audience_lab: { name: string; basis: string; synthetic: boolean; sample_runs: number; consensus: number; variance: number; rubric: Record<string, number>; note: string }[];
-  latest_poll: PollRecord;
+  latest_poll: PollRecord | null;
   coverage: CoverageReport;
   evidence: { id: string; title: string; url: string; source: string; published_at: string | null; captured_at: string; layer: string; rights: string; geography: string; classification_confidence: number; observation_type: string }[];
   provider_status: Record<string, string>;
@@ -822,8 +850,9 @@ export const api = {
   async getIntelligenceOverview(): Promise<IntelligenceOverview> {
     return request<IntelligenceOverview>("/api/v1/intelligence/overview");
   },
-  async getBriefView(window: ActivityWindow = "24h"): Promise<ThirtySecondBrief> {
-    return request<ThirtySecondBrief>(`/api/v1/intelligence/brief?window=${window}`);
+  async getBriefView(window: ActivityWindow = "24h", profileId?: string): Promise<ThirtySecondBrief> {
+    const suffix = profileId ? `&profile_id=${encodeURIComponent(profileId)}` : "";
+    return request<ThirtySecondBrief>(`/api/v1/intelligence/brief?window=${window}${suffix}`);
   },
   async getPoliticalActivityMonitor(window: ActivityWindow = "24h"): Promise<PoliticalActivityMonitor> {
     return request<PoliticalActivityMonitor>(`/api/v1/intelligence/activity-monitor?window=${window}`, { saAuth: true });
@@ -837,8 +866,24 @@ export const api = {
   async collectPoliticalActivity(): Promise<PoliticalActivityCollection> {
     return request<PoliticalActivityCollection>("/api/v1/intelligence/activity-monitor/collect", { method: "POST", saAuth: true });
   },
-  async getAnalysisCenter(): Promise<AnalysisCenter> {
-    return request<AnalysisCenter>("/api/v1/intelligence/analysis");
+  async getAnalysisCenter(window: ActivityWindow = "7d", profileId?: string): Promise<AnalysisCenter> {
+    const suffix = profileId ? `&profile_id=${encodeURIComponent(profileId)}` : "";
+    return request<AnalysisCenter>(`/api/v1/intelligence/analysis?window=${window}${suffix}`);
+  },
+  async listPolls(): Promise<PollRecord[]> {
+    return request<PollRecord[]>("/api/v1/intelligence/polls");
+  },
+  async createAudienceExperiment(variants: { id: string; title: string; message: string }[], profileId?: string): Promise<AudienceExperiment> {
+    return request<AudienceExperiment>("/api/v1/intelligence/audience-experiments", { method: "POST", body: JSON.stringify({ variants, profile_id: profileId }) });
+  },
+  async listAudienceExperiments(): Promise<AudienceExperiment[]> {
+    return request<AudienceExperiment[]>("/api/v1/intelligence/audience-experiments");
+  },
+  async getAudienceExperiment(runId: string): Promise<AudienceExperiment> {
+    return request<AudienceExperiment>(`/api/v1/intelligence/audience-experiments/${encodeURIComponent(runId)}`);
+  },
+  async reviewBrief(id: string, decision: "approved" | "rejected", note: string): Promise<{ id: string; review_status: string; review_note: string }> {
+    return request<{ id: string; review_status: string; review_note: string }>(`/api/v1/briefs/${encodeURIComponent(id)}/review`, { method: "PATCH", body: JSON.stringify({ decision, note }), saAuth: true });
   },
   async compareScenarioVariants(variants: { id: string; title: string; message: string }[]): Promise<ScenarioComparison> {
     return request<ScenarioComparison>("/api/v1/intelligence/scenario-comparison", {

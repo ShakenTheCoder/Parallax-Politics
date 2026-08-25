@@ -29,8 +29,8 @@ export default function Navbar() {
               { label: "Intelligence", href: "/intelligence" },
         ]
       : [
-          { label: "Brief", href: "/brief" },
-          { label: "Analysis Center", href: "/intelligence" },
+              { label: "Brief", href: "/brief" },
+              { label: "Analysis", href: "/analysis" },
         ]
     : [];
 

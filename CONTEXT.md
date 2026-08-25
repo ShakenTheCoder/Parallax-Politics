@@ -50,7 +50,7 @@ _Avoid_: Prompt context, memory dump
 - The initial six-person research watchlist is sourced to Pulse Asia's July 2026 hypothetical long list. All six retain `polled_hypothetical` until stronger, dated evidence supports another status.
 - Campaign Momentum includes observed performance and authorized owned analytics only. Polling and synthetic simulation are separate evidence layers. Competitive rank is suppressed below 60% coverage confidence.
 - Competitor relationships are mechanical same-question or same-ballot links with profile IDs, effective dates, and evidence. LLM output cannot authoritatively create a rival, candidacy, or party-affiliation record.
-- `/brief` is the mobile-first 30-second Brief: identity, current score, watchlist ratings, verified 36-hour appearances, and the latest plus three previous media opinions. `/intelligence` is the Analysis Center and owns the Audience Lab; `/audience` redirects there.
+- `/brief` is the mobile-first 30-second Brief. `/analysis` is reserved for the planned Analysis Center; until that experience is specified, it renders only its route shell. `/audience` redirects there.
 - Brief never substitutes fixture metrics. Missing scores, appearances, and opinions render as unavailable until provenance-bearing snapshots exist.
 
 - PIDAA and Brief content is generated from retrieved evidence and LLM analysis. The product must fail visibly when that evidence or analysis is unavailable; it must not substitute templates or fabricated defaults.

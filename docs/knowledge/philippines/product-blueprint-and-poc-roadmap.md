@@ -5,7 +5,7 @@
 
 ## Information architecture
 
-`/brief` is the mobile-first 30-second **Brief**. `/intelligence` is the full **Analysis Center** and owns the Audience Lab. `/audience` redirects to `/intelligence#audience-lab`. Identity and administration remain supporting surfaces.
+`/brief` is the mobile-first 30-second **Brief**. `/analysis` is reserved for the planned **Analysis Center** and Audience Lab; it remains a route shell until that experience is specified. `/audience` redirects to `/analysis#audience-lab`. Identity and administration remain supporting surfaces.
 
 Data flow:
 

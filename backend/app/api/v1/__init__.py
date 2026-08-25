@@ -7,6 +7,7 @@ from app.api.v1 import (
     briefs,
     glossary,
     intelligence,
+    live_evidence,
     profiles,
     runs,
     search,
@@ -23,4 +24,5 @@ api_router.include_router(superadmin.router)
 api_router.include_router(briefs.router)
 api_router.include_router(audience.router)
 api_router.include_router(intelligence.router)
+api_router.include_router(live_evidence.router)
 api_router.include_router(glossary.router)

@@ -227,6 +227,7 @@ class BriefAgent(BaseAgent):
                         tokens_in=tokens_in_total,
                         tokens_out=tokens_out_total,
                         confidence=round(parsed["confidence"], 3),
+                        review_status="agent_draft",
                     )
                     db.add(row)
                     await db.flush()

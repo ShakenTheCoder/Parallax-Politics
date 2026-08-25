@@ -393,7 +393,7 @@ class AnalysisCenterOut(BaseModel):
     narratives: list[dict[str, Any]]
     appearances: list[dict[str, Any]]
     audience_lab: list[dict[str, Any]]
-    latest_poll: dict[str, Any]
+    latest_poll: dict[str, Any] | None = None
     coverage: dict[str, Any]
     evidence: list[dict[str, Any]]
     provider_status: dict[str, Any]
