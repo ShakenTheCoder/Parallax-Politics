@@ -6,7 +6,7 @@ import { api, AudienceInstructionsSummary, isAdminRole } from "@/lib/api";
 import { useSession } from "@/lib/SessionContext";
 
 export default function AudienceRedirectPage() {
-  redirect("/intelligence#audience-lab");
+  redirect("/analysis#audience-lab");
 }
 
 export function LegacyAudienceCenterPage() {

@@ -92,7 +92,10 @@ export default function PoliticalActivityMonitorView() {
       router.replace("/login");
       return;
     }
-    if (user.role !== "superadmin") return;
+    if (user.role !== "superadmin") {
+      router.replace("/brief");
+      return;
+    }
     const task = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(task);
   }, [load, router, sessionLoading, user]);
@@ -133,8 +136,9 @@ export default function PoliticalActivityMonitorView() {
     [monitor],
   );
 
-  if (sessionLoading || loading) return <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-16 text-sm text-muted-foreground">Opening public activity monitor…</main>;
-  if (!user || user.role !== "superadmin") return <main className="mx-auto max-w-4xl px-5 py-16"><h1 className="text-2xl font-semibold">Superadmin access required</h1></main>;
+  if (sessionLoading) return <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-16 text-sm text-muted-foreground">Opening public activity monitor…</main>;
+  if (!user || user.role !== "superadmin") return null;
+  if (loading) return <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-16 text-sm text-muted-foreground">Opening public activity monitor…</main>;
 
   return (
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 sm:py-12">

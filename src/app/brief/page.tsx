@@ -220,6 +220,10 @@ function BriefDetail({ brief, onSeeNextMove }: { brief: BriefOut; onSeeNextMove:
 
   return (
     <div className="space-y-6">
+      <div className={`border p-3 text-xs ${brief.review_status === "approved" ? "border-green-500/60 text-green-600" : brief.review_status === "rejected" ? "border-red-500/60 text-red-600" : "border-border text-muted-foreground"}`}>
+        {brief.review_status === "approved" ? "Analyst approved" : brief.review_status === "rejected" ? "Rejected — retained for audit; do not treat the action as approved" : "Agent draft — pending analyst review"}
+        {brief.review_note && <span className="ml-2">· {brief.review_note}</span>}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <TopRiskCard brief={brief} />
         <TopOpportunityCard brief={brief} />

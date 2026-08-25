@@ -251,10 +251,7 @@ export default function AdminConsole() {
   const [confirming, setConfirming] = useState(false);
   const [newCreds, setNewCreds] = useState<CreatePrincipalOut["credentials"] | null>(null);
   const [createError, setCreateError] = useState("");
-  const [userForm, setUserForm] = useState({ username: "", password: "", display_name: "", role: "principal" as AdminUser["role"] });
-  const [showUserPassword, setShowUserPassword] = useState(false);
   const [userError, setUserError] = useState("");
-  const [creatingUser, setCreatingUser] = useState(false);
 
   const guardAdmin = useCallback(() => {
     if (!getToken()) router.replace("/login");
@@ -351,26 +348,6 @@ export default function AdminConsole() {
     router.push(`/identity?profileId=${encodeURIComponent(profileId)}`);
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreatingUser(true);
-    setUserError("");
-    try {
-      await api.createUser({
-        username: userForm.username,
-        password: userForm.password,
-        display_name: userForm.display_name || undefined,
-        role: userForm.role,
-      });
-      setUserForm({ username: "", password: "", display_name: "", role: "principal" });
-      await loadUsers();
-    } catch (err) {
-      setUserError(err instanceof Error ? err.message : "Could not create user");
-    } finally {
-      setCreatingUser(false);
-    }
-  };
-
   const handleDeleteUser = async (user: AdminUser) => {
     if (!confirm(`Remove ${user.display_name || user.username}? This cannot be undone.`)) return;
     try {
@@ -391,28 +368,8 @@ export default function AdminConsole() {
         <section className="space-y-5">
           <div>
             <h2 className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground">User Management</h2>
-            <p className="mt-2 text-xs text-muted-foreground">Create and remove login accounts. Passwords are stored only as hashes.</p>
+            <p className="mt-2 text-xs text-muted-foreground">Login accounts are created when a new identity is added.</p>
           </div>
-
-          <form onSubmit={handleCreateUser} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <input required minLength={1} maxLength={120} placeholder="Username" value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} className="min-h-11 border border-border bg-background px-3 text-sm" />
-            <div className="relative">
-              <input required minLength={6} maxLength={200} type={showUserPassword ? "text" : "password"} placeholder="Password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} className="min-h-11 w-full border border-border bg-background px-3 pr-11 text-sm" />
-              <button type="button" onClick={() => setShowUserPassword((visible) => !visible)} aria-label={showUserPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                {showUserPassword ? (
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.3A10.8 10.8 0 0112 4c5.2 0 8.7 4 9.8 6a11.8 11.8 0 01-3.2 3.8M6.2 6.2C3.9 7.7 2.6 9.6 2.2 10c1.1 2 4.6 6 9.8 6 1 0 1.9-.2 2.8-.5" /></svg>
-                ) : (
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.2 12s3.5-6 9.8-6 9.8 6 9.8 6-3.5 6-9.8 6-9.8-6-9.8-6z" /><circle cx="12" cy="12" r="2.5" /></svg>
-                )}
-              </button>
-            </div>
-            <input maxLength={200} placeholder="Display name (optional)" value={userForm.display_name} onChange={(e) => setUserForm({ ...userForm, display_name: e.target.value })} className="min-h-11 border border-border bg-background px-3 text-sm" />
-            <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as AdminUser["role"] })} className="min-h-11 border border-border bg-background px-3 text-sm">
-              <option value="principal">Principal</option>
-              <option value="superadmin">Superadmin</option>
-            </select>
-            <button disabled={creatingUser} className="min-h-11 border border-foreground bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50">{creatingUser ? "Creating…" : "Add user"}</button>
-          </form>
 
           {userError && <p className="text-sm text-red-700 dark:text-red-400">{userError}</p>}
           {loadingUsers ? <p className="text-sm text-muted-foreground">Loading users…</p> : (
