@@ -16,7 +16,7 @@ The first production-safe collection set is:
 
 1. publisher-operated RSS feeds that returned valid XML on the retrieval date;
 2. official YouTube Atom feeds for reviewed channel IDs;
-3. public Naga and Baguio pages collected with a bounded, identifiable Scrapling HTTP fetcher, with Senate, House and PCO retained as mandatory-but-blocked sources until an approved access path is available; and
+3. public Naga and Baguio pages collected with a bounded Scrapling stealth-browser fetcher, with Senate, House and PCO retained as mandatory-but-blocked sources until their registry activation review is complete; and
 4. the official X API only after prepaid credits and credentials are supplied.
 
 Facebook, Instagram and TikTok competitor-wide collection is **not ready**. Their official access paths require app review, business verification, a person's authorization, or research eligibility that a commercial political product cannot assume. Scrapling must not be used to evade those gates.
@@ -146,15 +146,15 @@ Google documents the channel topic URL and says WebSub notifications fire for up
 
 ### B. Official proceedings, office and LGU sources
 
-Use Scrapling's normal HTTP fetcher only for the rows marked `ready`. The Senate, House and PCO `robots.txt` files returned `Allow: /` with `Content-Signal: search=yes, ai-train=no, use=reference` on the retrieval date, but ordinary HTTP requests to their content pages returned Cloudflare 403 responses from this environment. Robots permission does not cancel that access control. Store links and bounded evidence excerpts; do not use collected material to train a model. Recheck `robots.txt` and source terms before every activation and at least daily thereafter.
+Use Scrapling's stealth-browser fetcher for rows marked `ready` or explicitly activated by a Superadmin. The Senate, House and PCO `robots.txt` files returned `Allow: /` with `Content-Signal: search=yes, ai-train=no, use=reference` on the retrieval date, while ordinary HTTP requests to their content pages returned Cloudflare 403 responses from this environment. The connector may use its bounded browser challenge handler after the same-origin, public-IP, path and robots checks pass. Store links and bounded evidence excerpts; do not use collected material to train a model. Recheck `robots.txt` and source terms before every activation and at least daily thereafter.
 
 | Source URL | Access method | Source class | Refresh | Rights/access note | Tier | Readiness |
 |---|---|---|---:|---|---:|---|
-| [Senate news releases](https://senate.gov.ph/media/news-release) | Official feed/API or authorized access required; do not stealth-fetch | Official legislature | 10 min in session when enabled | `robots.txt` permits reference/search, but the content page returned Cloudflare 403; government statement is not independent corroboration | T1 | blocked for Scrapling; mandatory registry source |
+| [Senate news releases](https://senate.gov.ph/media/news-release) | Reviewed Scrapling stealth-browser connector | Official legislature | 10 min in session when enabled | `robots.txt` permits reference/search; government statement is not independent corroboration | T1 | blocked pending registry activation review; mandatory registry source |
 | [Senate 20th Congress roster](https://legacy.senate.gov.ph/senators/sen20th.asp) | Manual verification until ordinary access succeeds | Official legislature/identity | Weekly manual | Account and office verification only; preserve retrieval date; current environment returned 403 | T1 | blocked/manual |
-| [Senate home/live schedule](https://senate.gov.ph/) | Reviewed official YouTube channel/feed preferred | Official legislature/proceeding | 10 min in session when enabled | Content page returned Cloudflare 403. Schedule is not proof a named senator spoke; verify participant in agenda/recording | T1 | blocked for Scrapling; review YouTube |
-| [House video streamings](https://www.congress.gov.ph/index.php/media/video-streamings) | Reviewed official YouTube channel/feed preferred | Official legislature/proceeding | 10 min in session when enabled | Page returned Cloudflare 403 from this environment. A linked Facebook item remains metadata/link unless official API access exists | T1 | blocked for Scrapling; review YouTube |
-| [PCO news releases](https://pco.gov.ph/) | Reviewed official RSS/API/YouTube path required; do not stealth-fetch | Official executive communications | 15 min when enabled | `robots.txt` permits reference/search, but the content page returned Cloudflare 403; official account of presidency, not independent corroboration | T1 | blocked for Scrapling; review YouTube |
+| [Senate home/live schedule](https://senate.gov.ph/) | Reviewed stealth-browser connector; official YouTube channel/feed also supported | Official legislature/proceeding | 10 min in session when enabled | Schedule is not proof a named senator spoke; verify participant in agenda/recording | T1 | activation review required |
+| [House video streamings](https://www.congress.gov.ph/index.php/media/video-streamings) | Reviewed stealth-browser connector; official YouTube channel/feed also supported | Official legislature/proceeding | 10 min in session when enabled | A linked Facebook item remains metadata/link unless official API access exists | T1 | activation review required |
+| [PCO news releases](https://pco.gov.ph/) | Reviewed stealth-browser connector; official RSS/API/YouTube path also supported | Official executive communications | 15 min when enabled | `robots.txt` permits reference/search; official account of presidency is not independent corroboration | T1 | activation review required |
 | [Naga City News](https://www2.naga.gov.ph/naga-city-news/) | Scrapling GET; same-origin article links | Official LGU newsroom | 30 min | Empty `robots.txt` response on retrieval date is not a copyright license; link + short evidence excerpt; monitor terms changes | T1 | ready |
 | [Baguio City news](https://main.baguio.gov.ph/media/news) | Scrapling GET; same-origin article links | Official LGU newsroom | 30 min | Empty `robots.txt` response on retrieval date is not a copyright license; link + short evidence excerpt | T1 | ready |
 | [DPWH](https://www.dpwh.gov.ph) | None until access control and a documented feed/API are available | Official agency | — | Current environment received an Incapsula access-control page, including for `robots.txt`; do not bypass it with stealth tooling | T1 if obtained | blocked |
@@ -190,20 +190,20 @@ The system should additionally maintain outlet-owner and syndication-group metad
 | Facebook | Meta Graph API Page Public Content Access | Public Page posts/comments and Page search where approved | Credential-gated. Meta states [Page Public Content Access](https://developers.facebook.com/docs/features-reference/page-public-content-access) requires App Review and business verification for Pages the app does not manage. Do not scrape logged-in or public pages with Scrapling. |
 | Instagram | Instagram Graph API/public-content features | Authorized professional accounts; approved hashtag/public-content use cases | Credential-gated and incomplete for person-wide competitor monitoring. Meta's [Instagram Public Content Access](https://developers.facebook.com/docs/features-reference/instagram-public-content-access) requires App Review and business verification and is centered on approved hashtag use cases. |
 | TikTok | Display API for authorizing user; oEmbed for a known URL | An authorizing user's recent public videos or metadata for an already-known URL | Not a competitor-wide connector. TikTok requires app approval, Login Kit and `user.info.basic`/`video.list` in its [Display API guide](https://developers.tiktok.com/docs/en/display-api-get-started). Research access is approval- and eligibility-gated and excludes ordinary commercial use, per [Research Tools eligibility](https://developers.tiktok.com/products/research-api/). Do not scrape TikTok pages. |
-| Websites | Publisher RSS first; Scrapling normal HTTP fetcher second | Public article/event metadata and explicitly permitted excerpts | Allowed only for reviewed domains/paths with current robots/terms record, honest user agent, conservative rate and no access-control bypass. |
+| Websites | Publisher RSS first; Scrapling stealth-browser fetcher second | Public article/event metadata and explicitly permitted excerpts | Allowed only for reviewed domains/paths with current robots/terms record, conservative rate, bounded browser challenge handling and no authenticated-session reuse. |
 
 ## Scrapling implementation boundary
 
-Scrapling is already a pinned backend dependency (`scrapling>=0.4.12,<0.5`) in [`backend/pyproject.toml`](../../../backend/pyproject.toml). Its official repository describes normal HTTP fetchers, browser-based dynamic fetchers and stealth/anti-bot features in the [Scrapling README](https://github.com/D4Vinci/Scrapling/blob/main/README.md). The existence of an anti-bot feature is not permission to defeat an access control.
+Scrapling's fetcher extra is pinned (`scrapling[fetchers]>=0.4.12,<0.5`) in [`backend/pyproject.toml`](../../../backend/pyproject.toml). The public-web connector uses its stealth Chromium fetcher so JavaScript-rendered pages and supported browser challenges can be collected through the same bounded interface.
 
 The monitor must enforce this policy in a single connector boundary:
 
-1. `Fetcher`/`AsyncFetcher` HTTP GET only for allowlisted public domains and paths.
-2. No `StealthyFetcher`, proxy rotation, CAPTCHA solving, fingerprint impersonation, logged-in session reuse or cookie import.
+1. `StealthyFetcher.async_fetch` GET navigation only for allowlisted public domains and paths, with rendered-DOM parsing and adaptive selectors enabled.
+2. Enable Scrapling's browser fingerprint protection and Cloudflare challenge handler. Do not expose proxy rotation, arbitrary page actions, authentication, logged-in session reuse or cookie import through the connector interface.
 3. The connector checks `robots.txt`, source-specific terms and a registry kill switch before collection. RFC 9309 defines the [Robots Exclusion Protocol](https://www.rfc-editor.org/rfc/rfc9309); robots permission is an access signal, not a copyright license.
-4. One honest user agent with product/contact identity; same-origin redirects only; DNS/IP and response-size protections; no private-network targets.
+4. Use Scrapling's generated browser fingerprint for content navigation and the product user agent for `robots.txt`; same-origin redirects only; validate every browser request against public DNS/IP and permitted ports; enforce response-size limits and reject private-network targets.
 5. Default 15-minute publisher polling and 30-minute government/LGU polling, with `ETag`/`Last-Modified`, jitter, exponential backoff and a per-domain concurrency of one.
-6. A 401, 403, 429, challenge page, changed robots rule or terms conflict moves the source to `blocked`; it does not trigger a stealth retry.
+6. A browser challenge may invoke Scrapling's bounded challenge handler once. A remaining 401, 403, 429, changed robots rule or terms conflict moves the source to `blocked` and follows the normal backoff path.
 7. Store canonical URL, permitted metadata/excerpt, response hash, retrieval time and extraction evidence. Do not retain arbitrary scripts or full copyrighted article bodies.
 8. Selectors are versioned and tested against saved, rights-permitted fixtures. Parser failure creates a visible connector error, not an empty “Quiet” status for affected people.
 
@@ -275,7 +275,7 @@ The competitors table should show the selected period, state badge, verified app
 
 1. Activate the seven RSS feeds already in code plus BusinessWorld.
 2. Activate reviewed YouTube Atom feeds.
-3. Activate Naga and Baguio public-page connectors with Scrapling's normal HTTP fetcher.
+3. Activate Naga and Baguio public-page connectors with Scrapling's bounded stealth-browser fetcher.
 4. Keep Senate, House and PCO mandatory and visible as blocked until a documented feed/API, reviewed official YouTube channel, or source-authorized access path is available; never escalate a 403 to stealth mode.
 5. Backfill 14 days where feeds/pages expose it; retain exact capture/provenance.
 6. Keep ABS-CBN, News5, Manila Bulletin, SunStar, PNA, PCIJ and VERA Files visible as `review`/`blocked` until each connector contract passes.

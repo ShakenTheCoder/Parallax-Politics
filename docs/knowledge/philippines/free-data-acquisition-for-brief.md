@@ -338,7 +338,7 @@ Every summary sentence and displayed score must resolve to its component values 
 | Google Trending Now RSS | Every 10 min | Alert/discovery only, not figure search share |
 | Google Trends comparison CSV | Daily, fixed operator workflow | Same terms, geography, category, type and batch |
 | Official identity/status pages | Weekly; daily when filings/status events begin | Two-source review for material profile changes |
-| Public government/news event pages | Every 30 min where feed exists; otherwise daily | No access-control bypass |
+| Public government/news event pages | Every 30 min where feed exists; otherwise daily | Reviewed Scrapling stealth-browser connector with bounded challenge handling |
 | Classification and clustering | On arrival; reconcile every 15 min | Pin model/rules version |
 | 36h brief recomputation | Every 15 min | Publish only on material change or hourly boundary |
 | Score/watchlist snapshot | Every 6h | Requires 14-day history and coverage gates |
