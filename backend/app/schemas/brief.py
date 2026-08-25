@@ -68,6 +68,7 @@ class BriefSummary(BaseModel):
     action_what: str
     confidence: float
     cost_usd: float
+    review_status: str = "agent_draft"
 
 
 class BriefOut(BaseModel):
@@ -87,6 +88,15 @@ class BriefOut(BaseModel):
     cost_usd: float = 0.0
     confidence: float = 0.0
     command_view: dict[str, Any] | None = None
+    review_status: str = "agent_draft"
+    reviewed_by: UUID | None = None
+    reviewed_at: datetime | None = None
+    review_note: str | None = None
+
+
+class BriefReview(BaseModel):
+    decision: str = Field(pattern=r"^(approved|rejected)$")
+    note: str = Field(min_length=3, max_length=2000)
 
 
 class BriefGenerateOut(BaseModel):

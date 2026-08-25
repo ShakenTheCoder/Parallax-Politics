@@ -328,6 +328,8 @@ async def _resolve_subject(db, run: Run) -> tuple[str | None, dict]:
             meta = {**meta, "pack_id": p.pack_id}
         if not meta.get("profile_id"):
             meta = {**meta, "profile_id": str(p.id)}
+        if not meta.get("full_name"):
+            meta = {**meta, "full_name": p.full_name}
     return (p.slug if p else None), meta
 
 

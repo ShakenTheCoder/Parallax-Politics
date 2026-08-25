@@ -45,6 +45,10 @@ def _row_to_out(row: PrincipalBrief) -> BriefOut:
         cost_usd=float(row.cost_usd or 0.0),
         confidence=float(row.confidence or 0.0),
         command_view=None,
+        review_status=row.review_status,
+        reviewed_by=row.reviewed_by,
+        reviewed_at=row.reviewed_at,
+        review_note=row.review_note,
     )
 
 
@@ -60,6 +64,7 @@ def _row_to_summary(row: PrincipalBrief) -> BriefSummary:
         action_what=str(ac.get("what") or ""),
         confidence=float(row.confidence or 0.0),
         cost_usd=float(row.cost_usd or 0.0),
+        review_status=row.review_status,
     )
 
 

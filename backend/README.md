@@ -24,6 +24,7 @@ docker compose up -d
 
 # 3. Install deps
 uv sync --extra dev
+uv run patchright install chromium
 
 # 4. Run migrations
 uv run alembic upgrade head
@@ -44,7 +45,7 @@ API docs: http://localhost:8000/docs
 
 - Apply every migration before starting the API: `uv run alembic upgrade head`.
 - Administrators register an explicit source authority and URL/path allowlist in `/intelligence`.
-- The public-web connector permits only public HTTP(S), public DNS addresses, ports 80/443, same-origin redirects, allowlisted paths, HTML under 2 MB, and robots-permitted requests. It does not support authentication, stealth, CAPTCHA bypass, or proxy rotation.
+- The public-web connector uses Scrapling's stealth Chromium fetcher with rendered-DOM parsing, browser fingerprint protection, and bounded Cloudflare challenge handling. It still permits only public HTTP(S), public DNS addresses, ports 80/443, same-origin navigation, allowlisted paths, HTML under 2 MB, and robots-permitted requests; authentication, cookie import, arbitrary page actions, and proxy rotation are not exposed.
 - A monitoring assignment binds one registered source/path to one Observed Candidate. The ARQ worker leases due assignments every minute and applies bounded retry backoff.
 - Polling, consented panels, platform APIs, and licensed feeds are represented as connector boundaries. They require contracts and credentials before ingestion; they never fall back to public scraping.
 - Scenario outputs are explicitly estimates. They use only time-bounded evidence, suppress cohorts below 100 observations, cap uncalibrated confidence, expire after 24 hours, and remain drafts until an administrator records an analyst decision.
